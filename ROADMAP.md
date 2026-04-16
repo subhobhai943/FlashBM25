@@ -31,11 +31,11 @@ that will support every future phase.
 - [x] Add `BM25F` skeleton (field-weighted multi-field scoring — full impl in Phase 3)
 
 ### 1.2 — Tokenizer Layer
-- [ ] Expose `Tokenizer` as a first-class Python class (currently hidden inside C++)
-- [ ] Add pluggable tokenizer support: users can pass any `Callable[[str], list[str]]`
-- [ ] Built-in tokenizer options: `whitespace` (current), `regex`, `unicode_word`
-- [ ] Stopword list support (built-in English list + custom list injection)
-- [ ] Stemmer hook — accept any callable (e.g., `nltk.PorterStemmer().stem`) without a hard dependency
+- [x] Expose `Tokenizer` as a first-class Python class (currently hidden inside C++)
+- [x] Add pluggable tokenizer support: users can pass any `Callable[[str], list[str]]`
+- [x] Built-in tokenizer options: `whitespace` (current), `regex`, `unicode_word`
+- [x] Stopword list support (built-in English list + custom list injection)
+- [x] Stemmer hook — accept any callable (e.g., `nltk.PorterStemmer().stem`) without a hard dependency
 
 ### 1.3 — Index Persistence
 - [ ] `bm25.save(path)` — serialize index to a compact binary format (MessagePack or custom)
