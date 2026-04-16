@@ -38,6 +38,7 @@ lowercase : bool (default True))doc")
         .def_property_readonly("avg_doc_length", &BM25::average_doc_length)
         .def_readonly("k1", &BM25::k1)
         .def_readonly("b",  &BM25::b)
+        .def_readonly("epsilon", &BM25::epsilon)
         .def("__repr__", [](const BM25& s) {
             return "<BM25 corpus_size=" + std::to_string(s.corpus_size()) +
                    " avgdl=" + std::to_string(s.average_doc_length()) + ">";
@@ -63,6 +64,7 @@ fixing the over-penalisation problem in classic BM25.)doc")
         .def_readonly("k1",    &BM25Plus::k1)
         .def_readonly("b",     &BM25Plus::b)
         .def_readonly("delta", &BM25Plus::delta)
+        .def_readonly("epsilon", &BM25Plus::epsilon)
         .def("__repr__", [](const BM25Plus& s) {
             return "<BM25Plus corpus_size=" + std::to_string(s.corpus_size()) +
                    " delta=" + std::to_string(s.delta) + ">";
@@ -87,6 +89,7 @@ Reduces over-penalisation of long documents; delta recommended in [0.0, 0.5].)do
         .def_readonly("k1",    &BM25L::k1)
         .def_readonly("b",     &BM25L::b)
         .def_readonly("delta", &BM25L::delta)
+        .def_readonly("epsilon", &BM25L::epsilon)
         .def("__repr__", [](const BM25L& s) {
             return "<BM25L corpus_size=" + std::to_string(s.corpus_size()) +
                    " delta=" + std::to_string(s.delta) + ">";
@@ -111,6 +114,7 @@ rare terms get lower k1 (faster saturation).)doc")
         .def_property_readonly("avg_doc_length", &BM25Adpt::average_doc_length)
         .def_readonly("k1", &BM25Adpt::k1)
         .def_readonly("b",  &BM25Adpt::b)
+        .def_readonly("epsilon", &BM25Adpt::epsilon)
         .def("__repr__", [](const BM25Adpt& s) {
             return "<BM25Adpt corpus_size=" + std::to_string(s.corpus_size()) +
                    " k1_base=" + std::to_string(s.k1) + ">";
@@ -141,6 +145,7 @@ scores = bm25f.get_scores("BM25"))doc")
         .def("set_field_b",  &BM25F::set_field_b,  py::arg("field"), py::arg("b"))
         .def_property_readonly("corpus_size", &BM25F::corpus_size)
         .def_readonly("k1", &BM25F::k1)
+        .def_readonly("epsilon", &BM25F::epsilon)
         .def("__repr__", [](const BM25F& s) {
             return "<BM25F corpus_size=" + std::to_string(s.corpus_size()) + ">";
         });

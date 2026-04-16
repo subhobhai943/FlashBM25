@@ -24,11 +24,11 @@
 that will support every future phase.
 
 ### 1.1 — Algorithm Completeness
-- [ ] Add `BM25L` variant (length-penalised lower-bound IDF)
-- [ ] Add `BM25Plus` variant (lower-bound term frequency)
-- [ ] Add `BM25Adpt` variant (adaptive `k1` per term)
-- [ ] Expose a `variant` parameter on the top-level `BM25` factory so users can switch variants with one argument
-- [ ] Add `BM25F` skeleton (field-weighted multi-field scoring — full impl in Phase 3)
+- [x] Add `BM25L` variant (length-penalised lower-bound IDF)
+- [x] Add `BM25Plus` variant (lower-bound term frequency)
+- [x] Add `BM25Adpt` variant (adaptive `k1` per term)
+- [x] Expose a `variant` parameter on the top-level `BM25` factory so users can switch variants with one argument
+- [x] Add `BM25F` skeleton (field-weighted multi-field scoring — full impl in Phase 3)
 
 ### 1.2 — Tokenizer Layer
 - [ ] Expose `Tokenizer` as a first-class Python class (currently hidden inside C++)

@@ -292,6 +292,10 @@ class BM25L:
     def avg_doc_length(self) -> float:
         return self._core.avg_doc_length
 
+    @property
+    def epsilon(self) -> float:
+        return self._core.epsilon
+
     def get_scores(self, query: str) -> List[float]:
         """Return a BM25L score for every document in the corpus."""
         return self._core.get_scores(query)
@@ -370,6 +374,10 @@ class BM25Plus:
     def avg_doc_length(self) -> float:
         return self._core.avg_doc_length
 
+    @property
+    def epsilon(self) -> float:
+        return self._core.epsilon
+
     def get_scores(self, query: str) -> List[float]:
         """Return a BM25+ score for every document in the corpus."""
         return self._core.get_scores(query)
@@ -443,6 +451,10 @@ class BM25Adpt:
     def avg_doc_length(self) -> float:
         return self._core.avg_doc_length
 
+    @property
+    def epsilon(self) -> float:
+        return self._core.epsilon
+
     def get_scores(self, query: str) -> List[float]:
         """Return a BM25Adpt score for every document in the corpus."""
         return self._core.get_scores(query)
@@ -509,6 +521,10 @@ class BM25F:
     @property
     def k1(self) -> float:
         return self._core.k1
+
+    @property
+    def epsilon(self) -> float:
+        return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
