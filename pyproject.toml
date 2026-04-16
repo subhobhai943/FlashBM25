@@ -40,5 +40,7 @@ Repository    = "https://github.com/subhobhai943/FlashBM25"
 # ── scikit-build-core config ──────────────────────────────────────────────────
 [tool.scikit-build]
 cmake.build-type = "Release"
-wheel.expand-macos-universal-wheel = false
+cmake.args = ["-G", "Ninja"]
+cmake.define = {CMAKE_MAKE_PROGRAM = "C:/Users/sarka/AppData/Local/Python/pythoncore-3.14-64/Scripts/ninja.exe", CMAKE_C_COMPILER = "gcc", CMAKE_CXX_COMPILER = "g++"}
+wheel.expand-macos-universal-tags = false
 wheel.packages = ["flashbm25"]

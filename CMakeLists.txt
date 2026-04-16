@@ -49,6 +49,7 @@ set_target_properties(flashbm25_tokenizer PROPERTIES
 add_library(flashbm25_core STATIC
   src/core/bm25.cpp
   src/core/bm25_variants.cpp
+  src/core/bm25f.cpp
   src/index/inverted_index.cpp
   src/scoring/hybrid_rrf.cpp
 )

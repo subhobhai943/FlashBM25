@@ -96,4 +96,46 @@ private:
     void   _build_idf();
 };
 
+// ─── BM25Adpt ─────────────────────────────────────────────────────────────────
+// Adaptive k1 per term (Lv & Zhai, 2011): k1 is adjusted for each query term
+// based on that term's average TF across documents that contain it.  High-mean-TF
+// terms get a higher k1 (slower saturation), low-mean-TF terms get a lower k1
+// (faster saturation).
+class BM25Adpt {
+public:
+    float  k1;        // base k1 (used as scaling anchor)
+    float  b;
+    float  epsilon;
+    bool   lowercase;
+
+    std::size_t num_docs;
+    double      avgdl;
+
+    std::vector<double>                                                doc_len;
+    std::unordered_map<std::string, std::unordered_map<std::size_t, double>> tf_index;
+    std::unordered_map<std::string, double>                            idf_cache;
+    std::unordered_map<std::string, double>                            k1_cache; // per-term adaptive k1
+
+    explicit BM25Adpt(
+        const std::vector<std::string>& corpus,
+        float k1_  = 1.5f,
+        float b_   = 0.75f,
+        float eps_  = 0.25f,
+        bool  lower = true
+    );
+
+    std::vector<double>                         get_scores(const std::string& query) const;
+    std::vector<std::pair<double, std::size_t>> get_top_n (const std::string& query, std::size_t n = 5) const;
+
+    std::size_t corpus_size()        const { return num_docs; }
+    double      average_doc_length() const { return avgdl; }
+
+private:
+    double _idf(const std::string& term) const;
+    double _adaptive_k1(const std::string& term) const;
+    void   _build_index(const std::vector<std::string>& corpus);
+    void   _build_idf();
+    void   _build_adaptive_k1();
+};
+
 } // namespace flashbm25

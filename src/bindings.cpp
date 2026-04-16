@@ -3,6 +3,7 @@
 
 #include "bm25.hpp"
 #include "bm25_variants.hpp"
+#include "bm25f.hpp"
 #include "inverted_index.hpp"
 #include "hybrid_rrf.hpp"
 
@@ -89,6 +90,59 @@ Reduces over-penalisation of long documents; delta recommended in [0.0, 0.5].)do
         .def("__repr__", [](const BM25L& s) {
             return "<BM25L corpus_size=" + std::to_string(s.corpus_size()) +
                    " delta=" + std::to_string(s.delta) + ">";
+        });
+
+    // ── BM25Adpt ─────────────────────────────────────────────────────────────
+    py::class_<BM25Adpt>(m, "BM25Adpt")
+        .def(py::init<const std::vector<std::string>&, float, float, float, bool>(),
+             py::arg("corpus"),
+             py::arg("k1")      = 1.5f,
+             py::arg("b")       = 0.75f,
+             py::arg("epsilon") = 0.25f,
+             py::arg("lowercase") = true,
+             R"doc(BM25Adpt (Lv & Zhai, 2011) — adaptive k1 per query term.
+
+k1 is automatically tuned per term based on the term's average TF across
+the corpus.  High-frequency terms get higher k1 (slower saturation),
+rare terms get lower k1 (faster saturation).)doc")
+        .def("get_scores", &BM25Adpt::get_scores, py::arg("query"))
+        .def("get_top_n",  &BM25Adpt::get_top_n,  py::arg("query"), py::arg("n") = 5)
+        .def_property_readonly("corpus_size",    &BM25Adpt::corpus_size)
+        .def_property_readonly("avg_doc_length", &BM25Adpt::average_doc_length)
+        .def_readonly("k1", &BM25Adpt::k1)
+        .def_readonly("b",  &BM25Adpt::b)
+        .def("__repr__", [](const BM25Adpt& s) {
+            return "<BM25Adpt corpus_size=" + std::to_string(s.corpus_size()) +
+                   " k1_base=" + std::to_string(s.k1) + ">";
+        });
+
+    // ── BM25F ─────────────────────────────────────────────────────────────────
+    py::class_<BM25F>(m, "BM25F")
+        .def(py::init<const std::vector<FieldDoc>&,
+                      const std::unordered_map<std::string, double>&,
+                      float, float, bool>(),
+             py::arg("corpus"),
+             py::arg("field_weights"),
+             py::arg("k1")       = 1.5f,
+             py::arg("epsilon")  = 0.25f,
+             py::arg("lowercase") = true,
+             R"doc(BM25F (Robertson et al., 2004) — field-weighted multi-field scoring.
+
+Each document is a dict mapping field names to text.  field_weights maps
+field names to their boost multipliers.
+
+Example
+-------
+corpus = [{"title": "BM25 intro", "body": "BM25 is ..."}, ...]
+bm25f = BM25F(corpus, field_weights={"title": 2.0, "body": 1.0})
+scores = bm25f.get_scores("BM25"))doc")
+        .def("get_scores",   &BM25F::get_scores,   py::arg("query"))
+        .def("get_top_n",    &BM25F::get_top_n,    py::arg("query"), py::arg("n") = 5)
+        .def("set_field_b",  &BM25F::set_field_b,  py::arg("field"), py::arg("b"))
+        .def_property_readonly("corpus_size", &BM25F::corpus_size)
+        .def_readonly("k1", &BM25F::k1)
+        .def("__repr__", [](const BM25F& s) {
+            return "<BM25F corpus_size=" + std::to_string(s.corpus_size()) + ">";
         });
 
     // ── InvertedIndex ────────────────────────────────────────────────────────
