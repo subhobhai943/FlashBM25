@@ -7,18 +7,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ── Build type ────────────────────────────────────────────────────────────────
+# ── Build type ─────────────────────────────────────────────────────────────────────────
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Use portable optimization flags; avoid -march=native which can cause
+# cross-compilation and CI failures (especially on macOS/Windows runners).
 add_compile_options(
   $<$<CONFIG:Release>:-O3>
-  $<$<CONFIG:Release>:-march=native>
   $<$<CONFIG:Release>:-DNDEBUG>
 )
 
-# ── pybind11 (fetched automatically if not found) ─────────────────────────────
+# ── pybind11 (fetched automatically if not found) ───────────────────────────────────
 find_package(pybind11 CONFIG QUIET)
 if(NOT pybind11_FOUND)
   include(FetchContent)
@@ -30,10 +31,10 @@ if(NOT pybind11_FOUND)
   FetchContent_MakeAvailable(pybind11)
 endif()
 
-# ── Optional: OpenMP for parallel scoring ─────────────────────────────────────
+# ── Optional: OpenMP for parallel scoring ───────────────────────────────────────────────
 find_package(OpenMP QUIET)
 
-# ── Pure-C tokenizer + Porter stemmer (callable from C, C++, Rust, WASM) ──────
+# ── Pure-C tokenizer + Porter stemmer (callable from C, C++, Rust, WASM) ────────────
 add_library(flashbm25_tokenizer STATIC
   src/tokenizer/stemmer.c
   src/tokenizer/tokenizer.c
@@ -45,7 +46,7 @@ set_target_properties(flashbm25_tokenizer PROPERTIES
   POSITION_INDEPENDENT_CODE ON   # needed for linking into a shared pybind module
 )
 
-# ── C++ core: BM25, BM25+, BM25L, InvertedIndex, RRF ─────────────────────────
+# ── C++ core: BM25, BM25+, BM25L, InvertedIndex, RRF ─────────────────────────────
 add_library(flashbm25_core STATIC
   src/core/bm25.cpp
   src/core/bm25_variants.cpp
@@ -69,7 +70,7 @@ if(OpenMP_CXX_FOUND)
   target_compile_definitions(flashbm25_core PUBLIC FLASHBM25_USE_OMP)
 endif()
 
-# ── Python extension ──────────────────────────────────────────────────────────
+# ── Python extension ─────────────────────────────────────────────────────────────────────
 pybind11_add_module(_flashbm25
   src/bindings.cpp
 )
@@ -78,7 +79,7 @@ target_link_libraries(_flashbm25 PRIVATE flashbm25_core)
 # Install the extension next to the Python package
 install(TARGETS _flashbm25 DESTINATION flashbm25)
 
-# ── Optional: install static libs for C/Rust consumers ───────────────────────
+# ── Optional: install static libs for C/Rust consumers ─────────────────────────────────
 install(TARGETS flashbm25_core flashbm25_tokenizer
   ARCHIVE DESTINATION lib
 )
