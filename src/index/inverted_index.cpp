@@ -2,6 +2,10 @@
 #include <unordered_map>
 #include <numeric>
 
+#include <cstdint>   // uint16_t, uint32_t, uint64_t
+#include <cstring>   // std::memcpy, std::memcmp
+#include <stdexcept> // std::runtime_error
+
 namespace flashbm25 {
 
 void InvertedIndex::add_document(std::size_t doc_id,
@@ -32,7 +36,7 @@ const std::vector<Posting>* InvertedIndex::lookup(const std::string& term) const
     return (it == index.end()) ? nullptr : &it->second;
 }
 
-// ─── Write helpers (little-endian) ────────────────────────────────────────────
+// ─── Write helpers (little-endian) ───────────────────────────────────────────────────────────────
 void InvertedIndex::write_u16(std::ofstream& f, uint16_t v) {
     char buf[2] = { (char)(v & 0xFF), (char)((v >> 8) & 0xFF) };
     f.write(buf, 2);
@@ -56,7 +60,7 @@ void InvertedIndex::write_f64(std::ofstream& f, double v) {
     write_u64(f, bits);
 }
 
-// ─── Read helpers ──────────────────────────────────────────────────────────────
+// ─── Read helpers ───────────────────────────────────────────────────────────────────────────────
 uint16_t InvertedIndex::read_u16(std::ifstream& f) {
     unsigned char b[2]; f.read((char*)b, 2);
     return (uint16_t)b[0] | ((uint16_t)b[1] << 8);
@@ -78,7 +82,7 @@ double InvertedIndex::read_f64(std::ifstream& f) {
     uint64_t bits = read_u64(f); double v; std::memcpy(&v, &bits, 8); return v;
 }
 
-// ─── Save ─────────────────────────────────────────────────────────────────────
+// ─── Save ───────────────────────────────────────────────────────────────────────────────────────
 void InvertedIndex::save(const std::string& path) const {
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     if (!f) throw std::runtime_error("InvertedIndex::save — cannot open: " + path);
@@ -103,7 +107,7 @@ void InvertedIndex::save(const std::string& path) const {
     write_f64(f, avgdl);
 }
 
-// ─── Load ─────────────────────────────────────────────────────────────────────
+// ─── Load ───────────────────────────────────────────────────────────────────────────────────────
 void InvertedIndex::load(const std::string& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("InvertedIndex::load — cannot open: " + path);

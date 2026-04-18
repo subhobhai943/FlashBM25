@@ -1,7 +1,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "bm25.hpp"
+// Use the canonical header directly to avoid the ODR violation that
+// occurred when both "bm25.hpp" and "core/bm25.hpp" were pulled into
+// the same translation unit through transitive includes.
+#include "core/bm25.hpp"
 #include "bm25_variants.hpp"
 #include "bm25f.hpp"
 #include "inverted_index.hpp"
@@ -13,7 +16,7 @@ using namespace flashbm25;
 PYBIND11_MODULE(_flashbm25, m) {
     m.doc() = "FlashBM25 — High-performance retrieval engine (C/C++ core)";
 
-    // ── BM25 ─────────────────────────────────────────────────────────────────
+    // ── BM25 ─────────────────────────────────────────────────────────────────────────────
     py::class_<BM25>(m, "BM25")
         .def(py::init<const std::vector<std::string>&, float, float, float, bool>(),
              py::arg("corpus"),
@@ -58,7 +61,7 @@ lowercase : bool (default True))doc")
                    " avgdl=" + std::to_string(s.average_doc_length()) + ">";
         });
 
-    // ── BM25+ ────────────────────────────────────────────────────────────────
+    // ── BM25+ ────────────────────────────────────────────────────────────────────────────
     py::class_<BM25Plus>(m, "BM25Plus")
         .def(py::init<const std::vector<std::string>&, float, float, float, float, bool>(),
              py::arg("corpus"),
@@ -84,7 +87,7 @@ fixing the over-penalisation problem in classic BM25.)doc")
                    " delta=" + std::to_string(s.delta) + ">";
         });
 
-    // ── BM25L ────────────────────────────────────────────────────────────────
+    // ── BM25L ────────────────────────────────────────────────────────────────────────────
     py::class_<BM25L>(m, "BM25L")
         .def(py::init<const std::vector<std::string>&, float, float, float, float, bool>(),
              py::arg("corpus"),
@@ -109,7 +112,7 @@ Reduces over-penalisation of long documents; delta recommended in [0.0, 0.5].)do
                    " delta=" + std::to_string(s.delta) + ">";
         });
 
-    // ── BM25Adpt ─────────────────────────────────────────────────────────────
+    // ── BM25Adpt ─────────────────────────────────────────────────────────────────────────────
     py::class_<BM25Adpt>(m, "BM25Adpt")
         .def(py::init<const std::vector<std::string>&, float, float, float, bool>(),
              py::arg("corpus"),
@@ -134,7 +137,7 @@ rare terms get lower k1 (faster saturation).)doc")
                    " k1_base=" + std::to_string(s.k1) + ">";
         });
 
-    // ── BM25F ─────────────────────────────────────────────────────────────────
+    // ── BM25F ──────────────────────────────────────────────────────────────────────────────
     py::class_<BM25F>(m, "BM25F")
         .def(py::init<const std::vector<FieldDoc>&,
                       const std::unordered_map<std::string, double>&,
@@ -164,7 +167,7 @@ scores = bm25f.get_scores("BM25"))doc")
             return "<BM25F corpus_size=" + std::to_string(s.corpus_size()) + ">";
         });
 
-    // ── InvertedIndex ────────────────────────────────────────────────────────
+    // ── InvertedIndex ──────────────────────────────────────────────────────────────────────────
     py::class_<InvertedIndex>(m, "InvertedIndex")
         .def(py::init<>(),
              R"doc(Low-level inverted index with on-disk serialization.
@@ -187,7 +190,7 @@ Save/load with .save(path) / .load(path).)doc")
                    " avgdl=" + std::to_string(idx.avgdl) + ">";
         });
 
-    // ── RRFScorer ────────────────────────────────────────────────────────────
+    // ── RRFScorer ──────────────────────────────────────────────────────────────────────────
     py::class_<RRFScorer>(m, "RRFScorer")
         .def(py::init<double>(), py::arg("k") = 60.0,
              R"doc(Reciprocal Rank Fusion scorer (Cormack et al., 2009).
