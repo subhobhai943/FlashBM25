@@ -34,11 +34,25 @@ lowercase : bool (default True))doc")
         .def("get_top_n",    &BM25::get_top_n,    py::arg("query"), py::arg("n") = 5)
         .def("get_top_n_docs", &BM25::get_top_n_docs,
              py::arg("corpus"), py::arg("query"), py::arg("n") = 5)
+        .def("add_documents", &BM25::add_documents, py::arg("documents"),
+             "Append new documents without rebuilding the full index.")
+        .def("save", &BM25::save, py::arg("path"),
+             "Persist the BM25 core state to disk.")
+        .def("dumps", [](const BM25& bm25) {
+            return py::bytes(bm25.dumps());
+        }, "Serialize the BM25 core state to bytes.")
+        .def_static("load", &BM25::load, py::arg("path"),
+             "Load a persisted BM25 core state from disk.")
+        .def_static("loads", [](py::bytes payload) {
+            return BM25::loads(static_cast<std::string>(payload));
+        }, py::arg("payload"),
+             "Deserialize a BM25 core state from bytes.")
         .def_property_readonly("corpus_size",    &BM25::corpus_size)
         .def_property_readonly("avg_doc_length", &BM25::average_doc_length)
         .def_readonly("k1", &BM25::k1)
         .def_readonly("b",  &BM25::b)
         .def_readonly("epsilon", &BM25::epsilon)
+        .def_readonly("lowercase", &BM25::lowercase)
         .def("__repr__", [](const BM25& s) {
             return "<BM25 corpus_size=" + std::to_string(s.corpus_size()) +
                    " avgdl=" + std::to_string(s.average_doc_length()) + ">";

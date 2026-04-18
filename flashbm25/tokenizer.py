@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Callable, Iterable, List, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, List, Optional, Sequence, Union
 
 
 ENGLISH_STOPWORDS = frozenset(
@@ -165,6 +165,30 @@ class Tokenizer:
             f"stopwords={len(self.stopwords)}, stemmer={self.stemmer is not None})"
         )
 
+    def to_state(self) -> dict[str, Any]:
+        if self.stemmer is not None:
+            raise TypeError(
+                "Tokenizer state cannot be serialized when it uses a callable stemmer."
+            )
+
+        return {
+            "mode": self.mode,
+            "pattern": self.pattern,
+            "lowercase": self.lowercase,
+            "stopwords": sorted(self.stopwords),
+            "min_token_len": self.min_token_len,
+        }
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> "Tokenizer":
+        return cls(
+            mode=state["mode"],
+            pattern=state.get("pattern"),
+            lowercase=state.get("lowercase", True),
+            stopwords=state.get("stopwords"),
+            min_token_len=state.get("min_token_len", 1),
+        )
+
 
 def _build_tokenizer_callable(
     tokenizer: TokenizerSpec,
@@ -236,3 +260,12 @@ class _TokenEncoder:
             if surrogate is not None:
                 encoded_tokens.append(surrogate)
         return " ".join(encoded_tokens)
+
+    def to_state(self) -> dict[str, str]:
+        return dict(self._token_to_surrogate)
+
+    @classmethod
+    def from_state(cls, state: dict[str, str]) -> "_TokenEncoder":
+        encoder = cls()
+        encoder._token_to_surrogate = dict(state)
+        return encoder

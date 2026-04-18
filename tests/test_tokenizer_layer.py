@@ -93,6 +93,55 @@ def test_bm25_stopwords_and_stemmer_apply_with_default_python_tokenizer():
 
 
 @skip_no_ext
+def test_bm25_persistence_with_builtin_tokenizer(tmp_path):
+    bm25 = BM25(UNICODE_CORPUS, tokenizer="unicode_word")
+    path = tmp_path / "unicode_word.fbm25"
+
+    expected_scores = bm25.get_scores("cafÃ©")
+    bm25.save(path)
+    loaded = BM25.load(path)
+
+    assert loaded.get_scores("cafÃ©") == pytest.approx(expected_scores)
+
+
+@skip_no_ext
+def test_bm25_add_documents_with_python_tokenizer_updates_encoder():
+    bm25 = BM25(["plain ascii diner food"], tokenizer="unicode_word")
+    bm25.add_documents(["naÃ¯ve cafÃ© customers love croissants"])
+
+    scores = bm25.get_scores("croissants")
+    assert scores[0] == 0.0
+    assert scores[1] > 0.0
+
+
+@skip_no_ext
+def test_bm25_save_rejects_callable_tokenizer(tmp_path):
+    def hyphen_tokenizer(text: str):
+        return text.replace("-", " ").split()
+
+    bm25 = BM25(
+        ["state-of-the-art retrieval", "basic search"],
+        tokenizer=hyphen_tokenizer,
+    )
+
+    with pytest.raises(TypeError, match="callable tokenizers"):
+        bm25.save(tmp_path / "callable-tokenizer.fbm25")
+
+
+@skip_no_ext
+def test_bm25_save_rejects_callable_stemmer(tmp_path):
+    stemmer = lambda token: {"running": "run", "runs": "run"}.get(token, token)
+    bm25 = BM25(
+        ["the running fox", "the sleepy dog"],
+        stopwords="english",
+        stemmer=stemmer,
+    )
+
+    with pytest.raises(TypeError, match="callable stemmer"):
+        bm25.save(tmp_path / "callable-stemmer.fbm25")
+
+
+@skip_no_ext
 def test_variant_with_tokenizer_support():
     bm25 = BM25Plus(UNICODE_CORPUS, tokenizer=Tokenizer(mode="unicode_word"))
     scores = bm25.get_scores("croissants")

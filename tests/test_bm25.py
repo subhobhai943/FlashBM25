@@ -121,6 +121,50 @@ def test_repr():
     assert "corpus_size" in r
 
 
+@skip_no_ext
+def test_save_and_load_roundtrip(tmp_path):
+    bm25 = BM25(CORPUS)
+    path = tmp_path / "roundtrip.fbm25"
+
+    expected_scores = bm25.get_scores("BM25 retrieval search")
+    expected_docs = bm25.get_top_n_docs("fox", n=2)
+
+    bm25.save(path)
+    loaded = BM25.load(path)
+
+    assert loaded.corpus_size == bm25.corpus_size
+    assert loaded.avg_doc_length == pytest.approx(bm25.avg_doc_length)
+    assert loaded.get_scores("BM25 retrieval search") == pytest.approx(expected_scores)
+    assert loaded.get_top_n_docs("fox", n=2) == expected_docs
+
+
+@skip_no_ext
+def test_add_documents_updates_index_incrementally():
+    bm25 = BM25(CORPUS[:2])
+    assert all(score == 0.0 for score in bm25.get_scores("retrieval"))
+
+    bm25.add_documents(
+        [
+            "retrieval systems rank documents",
+            "bm25 retrieval models power search",
+        ]
+    )
+
+    assert bm25.corpus_size == 4
+    scores = bm25.get_scores("retrieval")
+    assert len(scores) == 4
+    assert max(scores[2:]) > 0.0
+
+
+@skip_no_ext
+def test_remove_document_rebuilds_remaining_corpus():
+    bm25 = BM25(CORPUS)
+    bm25.remove_document(5)
+
+    assert bm25.corpus_size == len(CORPUS) - 1
+    assert bm25.get_top_n_docs("retrieval rank documents", n=1) == [CORPUS[4]]
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Variant factory — `variant` parameter
 # ══════════════════════════════════════════════════════════════════════════════

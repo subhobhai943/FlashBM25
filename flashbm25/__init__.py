@@ -11,7 +11,10 @@ layer for customization in Python.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+import json
+import os
+import struct
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 try:
     from ._flashbm25 import (
@@ -57,6 +60,164 @@ _VARIANT_MAP = {
     "adaptive": "adpt",
     "bm25adpt": "adpt",
 }
+
+_PERSISTENCE_MAGIC = b"FBM25PY\x00"
+_PERSISTENCE_VERSION = 1
+
+
+def _coerce_documents(documents: Iterable[str], *, source: str) -> List[str]:
+    if isinstance(documents, str):
+        raise TypeError(f"{source} must be an iterable of strings, not a single string.")
+
+    docs = list(documents)
+    for doc in docs:
+        if not isinstance(doc, str):
+            raise TypeError(f"{source} must contain only strings.")
+    return docs
+
+
+def _write_u32(handle, value: int) -> None:
+    handle.write(struct.pack("<I", value))
+
+
+def _write_u64(handle, value: int) -> None:
+    handle.write(struct.pack("<Q", value))
+
+
+def _read_exact(handle, size: int) -> bytes:
+    payload = handle.read(size)
+    if len(payload) != size:
+        raise ValueError("Unexpected end of file while reading a persisted BM25 index.")
+    return payload
+
+
+def _read_u32(handle) -> int:
+    return struct.unpack("<I", _read_exact(handle, 4))[0]
+
+
+def _read_u64(handle) -> int:
+    return struct.unpack("<Q", _read_exact(handle, 8))[0]
+
+
+def _write_string(handle, value: str) -> None:
+    payload = value.encode("utf-8")
+    _write_u64(handle, len(payload))
+    handle.write(payload)
+
+
+def _read_string(handle) -> str:
+    payload = _read_exact(handle, _read_u64(handle))
+    return payload.decode("utf-8")
+
+
+def _serialize_tokenizer_state(tokenizer: Tokenizer) -> Dict[str, Any]:
+    if tokenizer.stemmer is not None:
+        raise TypeError(
+            "BM25.save does not support tokenizers that use a callable stemmer."
+        )
+    return tokenizer.to_state()
+
+
+def _serialize_preprocess_state(
+    *,
+    tokenizer,
+    lowercase: bool,
+    stopwords,
+    extra_stopwords,
+    stemmer,
+    query_tokenizer,
+) -> Dict[str, Any]:
+    if query_tokenizer is None:
+        return {"kind": "core"}
+
+    if tokenizer is None:
+        if not isinstance(query_tokenizer, Tokenizer):
+            raise TypeError("BM25.save could not serialize the active tokenizer pipeline.")
+        return {
+            "kind": "tokenizer",
+            "state": _serialize_tokenizer_state(query_tokenizer),
+        }
+
+    if callable(tokenizer) and not isinstance(tokenizer, Tokenizer):
+        raise TypeError(
+            "BM25.save does not support arbitrary callable tokenizers because "
+            "they cannot be reconstructed on load."
+        )
+    if stemmer is not None:
+        raise TypeError(
+            "BM25.save does not support arbitrary callable stemmers because "
+            "they cannot be reconstructed on load."
+        )
+
+    if isinstance(tokenizer, str):
+        base_state = {"kind": "builtin", "mode": tokenizer}
+    elif isinstance(tokenizer, Tokenizer):
+        base_state = {
+            "kind": "tokenizer",
+            "state": _serialize_tokenizer_state(tokenizer),
+        }
+    else:
+        raise TypeError(
+            "BM25.save only supports built-in tokenizer names or Tokenizer "
+            "instances for persisted indices."
+        )
+
+    postprocess = Tokenizer(
+        mode="regex",
+        lowercase=lowercase,
+        stopwords=stopwords,
+        extra_stopwords=extra_stopwords,
+    )
+    return {
+        "kind": "composed",
+        "base": base_state,
+        "postprocess": postprocess.to_state(),
+    }
+
+
+def _restore_base_tokenizer(state: Dict[str, Any]) -> Callable[[str], List[str]]:
+    kind = state["kind"]
+    if kind == "builtin":
+        return Tokenizer(mode=state["mode"], lowercase=False)
+    if kind == "tokenizer":
+        return Tokenizer.from_state(state["state"])
+    raise ValueError(f"Unsupported persisted tokenizer base kind: {kind!r}")
+
+
+def _restore_query_tokenizer(state: Optional[Dict[str, Any]]):
+    if state is None:
+        return None
+
+    kind = state["kind"]
+    if kind == "core":
+        return None
+    if kind == "tokenizer":
+        return Tokenizer.from_state(state["state"])
+    if kind == "composed":
+        base_tokenizer = _restore_base_tokenizer(state["base"])
+        postprocessor = Tokenizer.from_state(state["postprocess"])
+
+        def tokenize_text(text: str) -> List[str]:
+            return postprocessor.process_tokens(base_tokenizer(text))
+
+        return tokenize_text
+
+    raise ValueError(f"Unsupported persisted tokenizer kind: {kind!r}")
+
+
+def _prepare_text_corpus_from_state(
+    corpus: Sequence[str],
+    preprocess_state: Dict[str, Any],
+):
+    query_tokenizer = _restore_query_tokenizer(preprocess_state)
+    if query_tokenizer is None:
+        return list(corpus), None, None
+
+    tokenized_corpus = [query_tokenizer(doc) for doc in corpus]
+    token_encoder = _TokenEncoder()
+    token_encoder.fit_many(tokenized_corpus)
+    encoded_corpus = [token_encoder.encode_text(tokens) for tokens in tokenized_corpus]
+    return encoded_corpus, query_tokenizer, token_encoder
 
 
 class _TokenizerSupportMixin:
@@ -223,25 +384,166 @@ class BM25(_TokenizerSupportMixin):
             return
         if hasattr(self, "_core"):
             return
-        if not corpus:
-            raise ValueError("corpus must contain at least one document.")
 
-        self._corpus = list(corpus)
-        encoded_corpus, self._query_tokenizer, self._token_encoder = _prepare_text_corpus(
-            corpus,
-            tokenizer=tokenizer,
-            lowercase=lowercase,
-            stopwords=stopwords,
-            extra_stopwords=extra_stopwords,
-            stemmer=stemmer,
-        )
+        self._config = {
+            "k1": float(k1),
+            "b": float(b),
+            "epsilon": float(epsilon),
+            "lowercase": bool(lowercase),
+        }
+        self._preprocess_args = {
+            "tokenizer": tokenizer,
+            "lowercase": lowercase,
+            "stopwords": stopwords,
+            "extra_stopwords": extra_stopwords,
+            "stemmer": stemmer,
+        }
+        self._preprocess_state = None
+        self._corpus = _coerce_documents(corpus, source="corpus")
+        if not self._corpus:
+            raise ValueError("corpus must contain at least one document.")
+        self._rebuild_core_from_corpus()
+
+    def _prepare_encoded_corpus(self):
+        if self._preprocess_args is not None:
+            return _prepare_text_corpus(self._corpus, **self._preprocess_args)
+        return _prepare_text_corpus_from_state(self._corpus, self._preprocess_state)
+
+    def _rebuild_core_from_corpus(self) -> None:
+        encoded_corpus, self._query_tokenizer, self._token_encoder = self._prepare_encoded_corpus()
         self._core = _BM25Core(
             encoded_corpus,
-            k1,
-            b,
-            epsilon,
-            lowercase if self._query_tokenizer is None else False,
+            self._config["k1"],
+            self._config["b"],
+            self._config["epsilon"],
+            self._config["lowercase"] if self._query_tokenizer is None else False,
         )
+
+    def _ensure_persistable_preprocess_state(self) -> Dict[str, Any]:
+        if self._preprocess_state is not None:
+            return self._preprocess_state
+        if self._preprocess_args is None:
+            raise TypeError("BM25 tokenizer state is unavailable for persistence.")
+
+        self._preprocess_state = _serialize_preprocess_state(
+            tokenizer=self._preprocess_args["tokenizer"],
+            lowercase=self._preprocess_args["lowercase"],
+            stopwords=self._preprocess_args["stopwords"],
+            extra_stopwords=self._preprocess_args["extra_stopwords"],
+            stemmer=self._preprocess_args["stemmer"],
+            query_tokenizer=self._query_tokenizer,
+        )
+        return self._preprocess_state
+
+    def save(self, path: Union[os.PathLike[str], str]) -> None:
+        preprocess_state = self._ensure_persistable_preprocess_state()
+        payload = {
+            "variant": "okapi",
+            "config": self._config,
+            "preprocess": preprocess_state,
+        }
+        payload_bytes = json.dumps(
+            payload,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        core_bytes = bytes(self._core.dumps())
+        token_encoder_state = (
+            self._token_encoder.to_state() if self._token_encoder is not None else {}
+        )
+
+        with open(os.fspath(path), "wb") as handle:
+            handle.write(_PERSISTENCE_MAGIC)
+            _write_u32(handle, _PERSISTENCE_VERSION)
+            _write_u64(handle, len(payload_bytes))
+            _write_u64(handle, len(core_bytes))
+            _write_u64(handle, len(self._corpus))
+            _write_u64(handle, len(token_encoder_state))
+            handle.write(payload_bytes)
+            handle.write(core_bytes)
+            for document in self._corpus:
+                _write_string(handle, document)
+            for token, surrogate in sorted(token_encoder_state.items()):
+                _write_string(handle, token)
+                _write_string(handle, surrogate)
+
+    @classmethod
+    def load(cls, path: Union[os.PathLike[str], str]) -> "BM25":
+        with open(os.fspath(path), "rb") as handle:
+            magic = _read_exact(handle, len(_PERSISTENCE_MAGIC))
+            if magic != _PERSISTENCE_MAGIC:
+                raise ValueError("Invalid FlashBM25 persistence file.")
+
+            version = _read_u32(handle)
+            if version != _PERSISTENCE_VERSION:
+                raise ValueError(
+                    f"Unsupported FlashBM25 persistence version: {version}."
+                )
+
+            payload_len = _read_u64(handle)
+            core_len = _read_u64(handle)
+            corpus_len = _read_u64(handle)
+            mapping_len = _read_u64(handle)
+
+            payload = json.loads(_read_exact(handle, payload_len).decode("utf-8"))
+            core_bytes = _read_exact(handle, core_len)
+            corpus = [_read_string(handle) for _ in range(corpus_len)]
+            token_mapping = {
+                _read_string(handle): _read_string(handle)
+                for _ in range(mapping_len)
+            }
+
+        if payload.get("variant") != "okapi":
+            raise ValueError(
+                f"BM25.load only supports okapi indices, got {payload.get('variant')!r}."
+            )
+
+        instance = object.__new__(cls)
+        instance._core = _BM25Core.loads(core_bytes)
+        instance._corpus = corpus
+        instance._config = {
+            "k1": float(instance._core.k1),
+            "b": float(instance._core.b),
+            "epsilon": float(instance._core.epsilon),
+            "lowercase": bool(
+                payload.get("config", {}).get("lowercase", instance._core.lowercase)
+            ),
+        }
+        instance._preprocess_args = None
+        instance._preprocess_state = payload.get("preprocess", {"kind": "core"})
+        instance._query_tokenizer = _restore_query_tokenizer(instance._preprocess_state)
+        instance._token_encoder = (
+            None
+            if instance._query_tokenizer is None
+            else _TokenEncoder.from_state(token_mapping)
+        )
+        return instance
+
+    def add_documents(self, new_docs: Sequence[str]) -> None:
+        documents = _coerce_documents(new_docs, source="new_docs")
+        if not documents:
+            return
+
+        encoded_documents = documents
+        if self._query_tokenizer is not None:
+            tokenized_documents = [self._query_tokenizer(doc) for doc in documents]
+            if self._token_encoder is None:
+                self._token_encoder = _TokenEncoder()
+            self._token_encoder.fit_many(tokenized_documents)
+            encoded_documents = [
+                self._token_encoder.encode_text(tokens)
+                for tokens in tokenized_documents
+            ]
+
+        self._core.add_documents(encoded_documents)
+        self._corpus.extend(documents)
+
+    def remove_document(self, doc_id: int) -> None:
+        if not 0 <= doc_id < len(self._corpus):
+            raise IndexError("doc_id out of range.")
+
+        del self._corpus[doc_id]
+        self._rebuild_core_from_corpus()
 
     @property
     def k1(self) -> float:

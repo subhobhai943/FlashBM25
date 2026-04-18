@@ -8,6 +8,7 @@
 #include <sstream>
 #include <cctype>
 #include <numeric>
+#include <iosfwd>
 
 namespace flashbm25 {
 
@@ -51,6 +52,12 @@ public:
     std::vector<double>                          get_scores(const std::string& query) const;
     std::vector<std::pair<double, std::size_t>>  get_top_n(const std::string& query, std::size_t n = 5) const;
     std::vector<std::string>                     get_top_n_docs(const std::vector<std::string>& corpus, const std::string& query, std::size_t n = 5) const;
+    void                                         add_documents(const std::vector<std::string>& documents);
+    void                                         save(const std::string& path) const;
+    std::string                                  dumps() const;
+
+    static BM25 load(const std::string& path);
+    static BM25 loads(const std::string& data);
 
     std::size_t corpus_size()       const { return num_docs; }
     double      average_doc_length()const { return avgdl; }
@@ -59,6 +66,8 @@ private:
     double _idf(const std::string& term) const;
     void   _build_index(const std::vector<std::string>& corpus);
     void   _build_idf();
+    void   _write_serialized(std::ostream& out) const;
+    static BM25 _read_serialized(std::istream& in);
 };
 
 } // namespace flashbm25

@@ -38,10 +38,10 @@ that will support every future phase.
 - [x] Stemmer hook — accept any callable (e.g., `nltk.PorterStemmer().stem`) without a hard dependency
 
 ### 1.3 — Index Persistence
-- [ ] `bm25.save(path)` — serialize index to a compact binary format (MessagePack or custom)
-- [ ] `BM25.load(path)` — deserialize and reconstruct without re-indexing
-- [ ] Incremental add: `bm25.add_documents(new_docs)` — append docs without full rebuild
-- [ ] Incremental delete: `bm25.remove_document(doc_id)` — mark-and-rebuild strategy
+- [x] `bm25.save(path)` — serialize index to a compact binary format (MessagePack or custom)
+- [x] `BM25.load(path)` — deserialize and reconstruct without re-indexing
+- [x] Incremental add: `bm25.add_documents(new_docs)` — append docs without full rebuild
+- [x] Incremental delete: `bm25.remove_document(doc_id)` — mark-and-rebuild strategy
 
 ### 1.4 — Testing & Quality Gates
 - [ ] Expand unit tests to cover all three BM25 variants
