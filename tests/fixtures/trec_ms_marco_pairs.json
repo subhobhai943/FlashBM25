@@ -1,0 +1,50 @@
+[
+  {
+    "dataset": "msmarco-passage-dev",
+    "query_id": "502939",
+    "query": "what is a lobster roll",
+    "documents": [
+      {
+        "doc_id": "msmarco_d0",
+        "text": "A lobster roll is a sandwich from New England made with lobster meat on a grilled split-top bun."
+      },
+      {
+        "doc_id": "msmarco_d1",
+        "text": "A tuna melt is a warm sandwich with cheese and tuna salad on toasted bread."
+      },
+      {
+        "doc_id": "msmarco_d2",
+        "text": "Maine lobster fisheries focus on sustainable harvest and coastal management."
+      },
+      {
+        "doc_id": "msmarco_d3",
+        "text": "Dinner rolls are small bread portions usually served as a side dish."
+      }
+    ],
+    "relevant_doc_ids": ["msmarco_d0"]
+  },
+  {
+    "dataset": "trec-covid-round1",
+    "query_id": "1",
+    "query": "what is the incubation period of covid 19",
+    "documents": [
+      {
+        "doc_id": "trec_d0",
+        "text": "The incubation period for COVID-19 is usually between 2 and 14 days, with a median around 5 days."
+      },
+      {
+        "doc_id": "trec_d1",
+        "text": "COVID-19 vaccines reduce severe disease and hospitalization risk in most populations."
+      },
+      {
+        "doc_id": "trec_d2",
+        "text": "Coronaviruses are a family of viruses that can infect animals and humans."
+      },
+      {
+        "doc_id": "trec_d3",
+        "text": "Public health guidance includes masking, testing, and ventilation for respiratory outbreaks."
+      }
+    ],
+    "relevant_doc_ids": ["trec_d0"]
+  }
+]

@@ -7,9 +7,92 @@ on:
     branches: [main]
 
 jobs:
+  quality-gates:
+    name: Quality Gates (coverage, lint, format)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: pip install scikit-build-core pybind11
+
+      - name: Install project (dev extras)
+        run: pip install -e ".[dev]" --no-build-isolation
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Lint Python (ruff)
+        run: ruff check flashbm25 tests benchmarks
+
+      - name: Check Python formatting (ruff format)
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            BASE_SHA=$(git rev-parse HEAD)
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            BASE_SHA=$(git rev-parse HEAD)
+          fi
+
+          CHANGED_PY=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "${{ github.sha }}" | grep -E '\.py$' || true)
+          if [[ -z "$CHANGED_PY" ]]; then
+            echo "No Python file changes detected. Skipping ruff format check."
+            exit 0
+          fi
+
+          echo "$CHANGED_PY" | xargs ruff format --check
+
+      - name: Check C/C++ formatting (clang-format)
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            BASE_SHA=$(git rev-parse HEAD)
+          fi
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            BASE_SHA=$(git rev-parse HEAD)
+          fi
+
+          CHANGED_CPP=$(git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "${{ github.sha }}" | grep -E '\.(c|cc|cpp|h|hpp)$' || true)
+          if [[ -z "$CHANGED_CPP" ]]; then
+            echo "No C/C++ file changes detected. Skipping clang-format check."
+            exit 0
+          fi
+
+          echo "$CHANGED_CPP" | xargs clang-format --dry-run --Werror
+
+      - name: Run tests with coverage gate
+        run: pytest tests/ -v --cov=flashbm25 --cov-report=term-missing --cov-report=xml --cov-fail-under=90
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
   build-and-test:
     name: Python ${{ matrix.python }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    needs: quality-gates
     strategy:
       fail-fast: false
       matrix:

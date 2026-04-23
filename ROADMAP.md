@@ -44,11 +44,11 @@ that will support every future phase.
 - [x] Incremental delete: `bm25.remove_document(doc_id)` — mark-and-rebuild strategy
 
 ### 1.4 — Testing & Quality Gates
-- [ ] Expand unit tests to cover all three BM25 variants
-- [ ] Add property-based tests (Hypothesis) for score monotonicity and IDF bounds
-- [ ] Add integration tests against known TREC / MS-MARCO query-document pairs
-- [ ] Set up coverage reporting (≥ 90 % line coverage gate in CI)
-- [ ] Add a linting / formatting step (`clang-format` for C++, `ruff` for Python)
+- [x] Expand unit tests to cover all three BM25 variants
+- [x] Add property-based tests (Hypothesis) for score monotonicity and IDF bounds
+- [x] Add integration tests against known TREC / MS-MARCO query-document pairs
+- [x] Set up coverage reporting (≥ 90 % line coverage gate in CI)
+- [x] Add a linting / formatting step (`clang-format` for C++, `ruff` for Python)
 
 ### 1.5 — Documentation Baseline
 - [ ] Set up Sphinx + `sphinx-autodoc` for Python API docs
