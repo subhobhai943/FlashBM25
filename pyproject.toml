@@ -37,6 +37,9 @@ dev   = [
   "numpy",
 ]
 bench = ["rank_bm25", "numpy"]
+docs = [
+  "sphinx>=7.1",
+]
 
 [project.urls]
 Homepage      = "https://github.com/subhobhai943/FlashBM25"

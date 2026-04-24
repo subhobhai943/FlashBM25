@@ -51,13 +51,13 @@ that will support every future phase.
 - [x] Add a linting / formatting step (`clang-format` for C++, `ruff` for Python)
 
 ### 1.5 — Documentation Baseline
-- [ ] Set up Sphinx + `sphinx-autodoc` for Python API docs
-- [ ] Write narrative "Getting Started" guide
-- [ ] Document every public class, method, and parameter with type hints + docstrings
-- [ ] Publish docs to Read the Docs
+- [x] Set up Sphinx + `sphinx.ext.autodoc` for Python API docs
+- [x] Write narrative "Getting Started" guide
+- [x] Document every public class, method, and parameter with type hints + docstrings
+- [x] Configure Read the Docs publishing via `.readthedocs.yaml`
 
 **Exit criteria:** All existing tests pass, three BM25 variants available, index save/load works,
-docs site live.
+docs site configured for Read the Docs.
 
 ---
 

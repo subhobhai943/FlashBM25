@@ -1,3 +1,5 @@
+"""Tokenization helpers for the public FlashBM25 Python API."""
+
 from __future__ import annotations
 
 import re
@@ -82,7 +84,36 @@ def _normalize_stopwords(
 
 
 class Tokenizer:
-    """Configurable Python tokenizer for FlashBM25."""
+    """Configurable tokenizer used by the FlashBM25 Python wrapper.
+
+    The tokenizer can split text with one of the built-in modes, normalize
+    tokens, remove stopwords, and optionally apply a caller-provided stemmer.
+    It is used for both corpus documents and incoming queries when passed to a
+    ranking class such as :class:`flashbm25.BM25`.
+
+    Parameters
+    ----------
+    mode:
+        Token splitting strategy. ``"regex"`` uses ``pattern``,
+        ``"unicode_word"`` uses Python's Unicode word matcher, and
+        ``"whitespace"`` splits on whitespace only.
+    pattern:
+        Regular expression used when ``mode="regex"``. When omitted, the
+        tokenizer matches ASCII word-like tokens.
+    lowercase:
+        Case-fold tokens before stopword filtering and stemming.
+    stopwords:
+        Stopword configuration. Use ``True`` or ``"english"`` for the built-in
+        English set, pass a sequence of strings for a custom set, or leave as
+        ``None``/``False`` to disable stopword filtering.
+    extra_stopwords:
+        Additional words to remove after applying ``stopwords``.
+    stemmer:
+        Optional callable that receives one token and returns its stemmed form.
+        FlashBM25 does not depend on any specific stemming library.
+    min_token_len:
+        Drop tokens shorter than this many characters after normalization.
+    """
 
     _VALID_MODES = frozenset({"regex", "unicode_word", "whitespace"})
 
@@ -132,6 +163,19 @@ class Tokenizer:
         return _UNICODE_WORD_PATTERN.findall(text)
 
     def process_tokens(self, tokens: Iterable[str]) -> List[str]:
+        """Normalize, filter, and stem pre-tokenized input.
+
+        Parameters
+        ----------
+        tokens:
+            Iterable of string tokens produced by a tokenizer.
+
+        Returns
+        -------
+        list[str]
+            Tokens after case-folding, stopword removal, stemming, and minimum
+            length filtering.
+        """
         processed: List[str] = []
         for token in _coerce_tokens(tokens, source="tokenizer"):
             if self.lowercase:
@@ -154,9 +198,33 @@ class Tokenizer:
         return processed
 
     def tokenize(self, text: str) -> List[str]:
+        """Split and process a text string.
+
+        Parameters
+        ----------
+        text:
+            Input document or query text.
+
+        Returns
+        -------
+        list[str]
+            Processed tokens ready to be indexed or encoded for query scoring.
+        """
         return self.process_tokens(self._split(text))
 
     def __call__(self, text: str) -> List[str]:
+        """Tokenize ``text``.
+
+        Parameters
+        ----------
+        text:
+            Input document or query text.
+
+        Returns
+        -------
+        list[str]
+            Processed tokens.
+        """
         return self.tokenize(text)
 
     def __repr__(self) -> str:
@@ -166,6 +234,19 @@ class Tokenizer:
         )
 
     def to_state(self) -> dict[str, Any]:
+        """Serialize tokenizer settings to JSON-compatible state.
+
+        Returns
+        -------
+        dict[str, Any]
+            Reconstructable tokenizer configuration.
+
+        Raises
+        ------
+        TypeError
+            If the tokenizer uses a callable stemmer, which cannot be restored
+            automatically from persisted state.
+        """
         if self.stemmer is not None:
             raise TypeError(
                 "Tokenizer state cannot be serialized when it uses a callable stemmer."
@@ -181,6 +262,18 @@ class Tokenizer:
 
     @classmethod
     def from_state(cls, state: dict[str, Any]) -> "Tokenizer":
+        """Create a tokenizer from :meth:`to_state` output.
+
+        Parameters
+        ----------
+        state:
+            Serialized tokenizer configuration.
+
+        Returns
+        -------
+        Tokenizer
+            Reconstructed tokenizer instance.
+        """
         return cls(
             mode=state["mode"],
             pattern=state.get("pattern"),

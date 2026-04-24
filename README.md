@@ -69,6 +69,12 @@ print(bm25.get_top_n("fox jumps", n=3))
 print(bm25.get_top_n_docs("fox jumps", n=3))
 ```
 
+## Documentation
+
+The documentation source lives in [`docs/`](docs/) and is configured for Read the Docs via
+[`.readthedocs.yaml`](.readthedocs.yaml). The API reference is generated with Sphinx autodoc from
+the public Python docstrings.
+
 ## API Reference
 
 ### `BM25(corpus, k1=1.5, b=0.75, epsilon=0.25, lowercase=True)`

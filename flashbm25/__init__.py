@@ -32,7 +32,9 @@ except ImportError as exc:  # pragma: no cover
 
 from .tokenizer import (
     ENGLISH_STOPWORDS,
+    StopwordSpec,
     Tokenizer,
+    TokenizerSpec,
     _TokenEncoder,
     _build_tokenizer_callable,
 )
@@ -292,32 +294,79 @@ def _prepare_field_corpus(
 
 
 class BM25(_TokenizerSupportMixin):
-    """
-    Okapi BM25 ranking model backed by a C++ inverted index.
+    """Okapi BM25 ranking model backed by a C++ inverted index.
 
-    When ``variant`` is specified, this acts as a factory and returns the
-    corresponding variant class instead:
+    ``BM25`` indexes a non-empty corpus of text documents and scores every
+    document against a text query. When ``variant`` is provided, the constructor
+    acts as a small factory and returns the requested variant class instead.
 
-    * ``"okapi"`` (default) -> :class:`BM25`
-    * ``"l"`` -> :class:`BM25L`
-    * ``"plus"`` -> :class:`BM25Plus`
-    * ``"adpt"`` -> :class:`BM25Adpt`
+    Parameters
+    ----------
+    corpus:
+        Non-empty sequence of document strings to index.
+    k1:
+        Term-frequency saturation parameter. Higher values keep rewarding
+        repeated terms for longer.
+    b:
+        Document length normalization parameter. ``0`` disables length
+        normalization and ``1`` applies full normalization.
+    epsilon:
+        Lower bound applied to IDF values to avoid negative scores.
+    lowercase:
+        Case-fold text before indexing and querying when using the default C++
+        tokenizer. When a Python tokenizer is active, this is applied in the
+        Python tokenizer pipeline.
+    variant:
+        Optional variant selector. Accepted values include ``"okapi"``,
+        ``"l"``, ``"plus"``, and ``"adpt"`` plus common aliases.
+    delta:
+        Variant-specific additive lower bound used by BM25L and BM25Plus.
+        Ignored by Okapi BM25 and BM25Adpt.
+    tokenizer:
+        Tokenizer configuration. Pass ``None`` for the default C++ tokenizer, a
+        built-in tokenizer name, a :class:`Tokenizer`, or a callable that
+        returns tokens.
+    stopwords:
+        Stopword configuration for the Python tokenizer pipeline.
+    extra_stopwords:
+        Additional stopwords to remove after ``stopwords`` are applied.
+    stemmer:
+        Optional callable that stems one token at a time.
+
+    Returns
+    -------
+    BM25
+        A BM25 instance, or a concrete variant instance when ``variant`` is set.
+
+    Raises
+    ------
+    ValueError
+        If ``corpus`` is empty or ``variant`` is unknown.
+    TypeError
+        If the corpus or tokenizer pipeline contains unsupported values.
+
+    Notes
+    -----
+    Variant aliases map as follows: ``"okapi"`` and ``"bm25"`` return
+    :class:`BM25`; ``"l"`` and ``"bm25l"`` return :class:`BM25L`; ``"plus"``,
+    ``"bm25+"``, and ``"bm25plus"`` return :class:`BM25Plus`; ``"adpt"``,
+    ``"adaptive"``, and ``"bm25adpt"`` return :class:`BM25Adpt`.
     """
 
     def __new__(
         cls,
-        corpus: List[str],
+        corpus: Sequence[str],
         k1: float = 1.5,
         b: float = 0.75,
         epsilon: float = 0.25,
         lowercase: bool = True,
         variant: Optional[str] = None,
         delta: Optional[float] = None,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
-    ):
+    ) -> object:
         if variant is not None:
             key = _VARIANT_MAP.get(variant.lower())
             if key is None:
@@ -368,16 +417,16 @@ class BM25(_TokenizerSupportMixin):
 
     def __init__(
         self,
-        corpus: List[str],
+        corpus: Sequence[str],
         k1: float = 1.5,
         b: float = 0.75,
         epsilon: float = 0.25,
         lowercase: bool = True,
         variant: Optional[str] = None,
         delta: Optional[float] = None,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
     ) -> None:
         if not isinstance(self, BM25):
@@ -436,6 +485,19 @@ class BM25(_TokenizerSupportMixin):
         return self._preprocess_state
 
     def save(self, path: Union[os.PathLike[str], str]) -> None:
+        """Persist this index and its reconstructable Python state.
+
+        Parameters
+        ----------
+        path:
+            Destination file path. Parent directories must already exist.
+
+        Raises
+        ------
+        TypeError
+            If the active tokenizer pipeline includes arbitrary Python callables
+            that cannot be reconstructed by :meth:`load`.
+        """
         preprocess_state = self._ensure_persistable_preprocess_state()
         payload = {
             "variant": "okapi",
@@ -469,6 +531,24 @@ class BM25(_TokenizerSupportMixin):
 
     @classmethod
     def load(cls, path: Union[os.PathLike[str], str]) -> "BM25":
+        """Load an index saved with :meth:`save`.
+
+        Parameters
+        ----------
+        path:
+            Path to a persisted ``.fbm25`` file.
+
+        Returns
+        -------
+        BM25
+            Reconstructed Okapi BM25 index with corpus, scoring parameters, and
+            tokenizer state restored.
+
+        Raises
+        ------
+        ValueError
+            If the file is not a supported FlashBM25 persistence file.
+        """
         with open(os.fspath(path), "rb") as handle:
             magic = _read_exact(handle, len(_PERSISTENCE_MAGIC))
             if magic != _PERSISTENCE_MAGIC:
@@ -520,6 +600,19 @@ class BM25(_TokenizerSupportMixin):
         return instance
 
     def add_documents(self, new_docs: Sequence[str]) -> None:
+        """Append documents to the index.
+
+        Parameters
+        ----------
+        new_docs:
+            Sequence of document strings to append. An empty sequence is a
+            no-op.
+
+        Raises
+        ------
+        TypeError
+            If ``new_docs`` is a single string or contains non-string values.
+        """
         documents = _coerce_documents(new_docs, source="new_docs")
         if not documents:
             return
@@ -539,6 +632,18 @@ class BM25(_TokenizerSupportMixin):
         self._corpus.extend(documents)
 
     def remove_document(self, doc_id: int) -> None:
+        """Remove one document by zero-based document id.
+
+        Parameters
+        ----------
+        doc_id:
+            Position of the document to remove from the current corpus.
+
+        Raises
+        ------
+        IndexError
+            If ``doc_id`` is outside the current corpus range.
+        """
         if not 0 <= doc_id < len(self._corpus):
             raise IndexError("doc_id out of range.")
 
@@ -547,31 +652,76 @@ class BM25(_TokenizerSupportMixin):
 
     @property
     def k1(self) -> float:
+        """Term-frequency saturation parameter used by the model."""
         return self._core.k1
 
     @property
     def b(self) -> float:
+        """Document length normalization parameter used by the model."""
         return self._core.b
 
     @property
     def epsilon(self) -> float:
+        """Lower bound applied to IDF values."""
         return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
+        """Number of documents currently indexed."""
         return self._core.corpus_size
 
     @property
     def avg_doc_length(self) -> float:
+        """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
     def get_scores(self, query: str) -> List[float]:
+        """Score every indexed document against ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+
+        Returns
+        -------
+        list[float]
+            One BM25 score per document, in corpus order.
+        """
         return self._core.get_scores(self._encode_query(query))
 
     def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+        """Return the highest-scoring document ids for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of results to return.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        """
         return self._core.get_top_n(self._encode_query(query), n)
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
+        """Return the highest-scoring document strings for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of documents to return.
+
+        Returns
+        -------
+        list[str]
+            Original corpus documents sorted by descending BM25 score.
+        """
         return self._top_n_docs_from_corpus(query, n)
 
     def __repr__(self) -> str:
@@ -583,17 +733,45 @@ class BM25(_TokenizerSupportMixin):
 
 
 class BM25L(_TokenizerSupportMixin):
+    """BM25L ranking model with a lower-bounded length-normalized TF term.
+
+    BM25L reduces the tendency of classic BM25 to over-penalize long documents.
+
+    Parameters
+    ----------
+    corpus:
+        Non-empty sequence of document strings to index.
+    k1:
+        Term-frequency saturation parameter.
+    b:
+        Document length normalization parameter.
+    delta:
+        Additive lower bound for the normalized term-frequency component.
+    epsilon:
+        Lower bound applied to IDF values.
+    lowercase:
+        Case-fold text before indexing and querying.
+    tokenizer:
+        Tokenizer configuration or callable for the Python tokenizer pipeline.
+    stopwords:
+        Stopword configuration for the Python tokenizer pipeline.
+    extra_stopwords:
+        Additional stopwords to remove after ``stopwords`` are applied.
+    stemmer:
+        Optional callable that stems one token at a time.
+    """
+
     def __init__(
         self,
-        corpus: List[str],
+        corpus: Sequence[str],
         k1: float = 1.5,
         b: float = 0.75,
         delta: float = 0.5,
         epsilon: float = 0.25,
         lowercase: bool = True,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
     ) -> None:
         if not corpus:
@@ -619,35 +797,81 @@ class BM25L(_TokenizerSupportMixin):
 
     @property
     def k1(self) -> float:
+        """Term-frequency saturation parameter used by the model."""
         return self._core.k1
 
     @property
     def b(self) -> float:
+        """Document length normalization parameter used by the model."""
         return self._core.b
 
     @property
     def delta(self) -> float:
+        """Lower bound added to the normalized term-frequency component."""
         return self._core.delta
 
     @property
     def epsilon(self) -> float:
+        """Lower bound applied to IDF values."""
         return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
+        """Number of documents currently indexed."""
         return self._core.corpus_size
 
     @property
     def avg_doc_length(self) -> float:
+        """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
     def get_scores(self, query: str) -> List[float]:
+        """Score every indexed document against ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+
+        Returns
+        -------
+        list[float]
+            One BM25L score per document, in corpus order.
+        """
         return self._core.get_scores(self._encode_query(query))
 
     def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+        """Return the highest-scoring document ids for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of results to return.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        """
         return self._core.get_top_n(self._encode_query(query), n)
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
+        """Return the highest-scoring document strings for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of documents to return.
+
+        Returns
+        -------
+        list[str]
+            Original corpus documents sorted by descending BM25L score.
+        """
         return self._top_n_docs_from_corpus(query, n)
 
     def __repr__(self) -> str:
@@ -659,17 +883,46 @@ class BM25L(_TokenizerSupportMixin):
 
 
 class BM25Plus(_TokenizerSupportMixin):
+    """BM25Plus ranking model with a positive lower-bound TF contribution.
+
+    BM25Plus adds ``delta`` to the matching-term contribution, which helps avoid
+    over-penalizing longer documents that contain query terms.
+
+    Parameters
+    ----------
+    corpus:
+        Non-empty sequence of document strings to index.
+    k1:
+        Term-frequency saturation parameter.
+    b:
+        Document length normalization parameter.
+    delta:
+        Additive lower bound applied to matching term contributions.
+    epsilon:
+        Lower bound applied to IDF values.
+    lowercase:
+        Case-fold text before indexing and querying.
+    tokenizer:
+        Tokenizer configuration or callable for the Python tokenizer pipeline.
+    stopwords:
+        Stopword configuration for the Python tokenizer pipeline.
+    extra_stopwords:
+        Additional stopwords to remove after ``stopwords`` are applied.
+    stemmer:
+        Optional callable that stems one token at a time.
+    """
+
     def __init__(
         self,
-        corpus: List[str],
+        corpus: Sequence[str],
         k1: float = 1.5,
         b: float = 0.75,
         delta: float = 1.0,
         epsilon: float = 0.25,
         lowercase: bool = True,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
     ) -> None:
         if not corpus:
@@ -695,35 +948,81 @@ class BM25Plus(_TokenizerSupportMixin):
 
     @property
     def k1(self) -> float:
+        """Term-frequency saturation parameter used by the model."""
         return self._core.k1
 
     @property
     def b(self) -> float:
+        """Document length normalization parameter used by the model."""
         return self._core.b
 
     @property
     def delta(self) -> float:
+        """Positive lower-bound contribution for matching terms."""
         return self._core.delta
 
     @property
     def epsilon(self) -> float:
+        """Lower bound applied to IDF values."""
         return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
+        """Number of documents currently indexed."""
         return self._core.corpus_size
 
     @property
     def avg_doc_length(self) -> float:
+        """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
     def get_scores(self, query: str) -> List[float]:
+        """Score every indexed document against ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+
+        Returns
+        -------
+        list[float]
+            One BM25Plus score per document, in corpus order.
+        """
         return self._core.get_scores(self._encode_query(query))
 
     def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+        """Return the highest-scoring document ids for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of results to return.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        """
         return self._core.get_top_n(self._encode_query(query), n)
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
+        """Return the highest-scoring document strings for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of documents to return.
+
+        Returns
+        -------
+        list[str]
+            Original corpus documents sorted by descending BM25Plus score.
+        """
         return self._top_n_docs_from_corpus(query, n)
 
     def __repr__(self) -> str:
@@ -735,16 +1034,43 @@ class BM25Plus(_TokenizerSupportMixin):
 
 
 class BM25Adpt(_TokenizerSupportMixin):
+    """BM25Adpt ranking model with adaptive per-term saturation.
+
+    BM25Adpt starts from a base ``k1`` value and adapts saturation behavior per
+    query term using corpus term-frequency statistics.
+
+    Parameters
+    ----------
+    corpus:
+        Non-empty sequence of document strings to index.
+    k1:
+        Base term-frequency saturation parameter.
+    b:
+        Document length normalization parameter.
+    epsilon:
+        Lower bound applied to IDF values.
+    lowercase:
+        Case-fold text before indexing and querying.
+    tokenizer:
+        Tokenizer configuration or callable for the Python tokenizer pipeline.
+    stopwords:
+        Stopword configuration for the Python tokenizer pipeline.
+    extra_stopwords:
+        Additional stopwords to remove after ``stopwords`` are applied.
+    stemmer:
+        Optional callable that stems one token at a time.
+    """
+
     def __init__(
         self,
-        corpus: List[str],
+        corpus: Sequence[str],
         k1: float = 1.5,
         b: float = 0.75,
         epsilon: float = 0.25,
         lowercase: bool = True,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
     ) -> None:
         if not corpus:
@@ -769,31 +1095,76 @@ class BM25Adpt(_TokenizerSupportMixin):
 
     @property
     def k1(self) -> float:
+        """Base term-frequency saturation parameter used by the model."""
         return self._core.k1
 
     @property
     def b(self) -> float:
+        """Document length normalization parameter used by the model."""
         return self._core.b
 
     @property
     def epsilon(self) -> float:
+        """Lower bound applied to IDF values."""
         return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
+        """Number of documents currently indexed."""
         return self._core.corpus_size
 
     @property
     def avg_doc_length(self) -> float:
+        """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
     def get_scores(self, query: str) -> List[float]:
+        """Score every indexed document against ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+
+        Returns
+        -------
+        list[float]
+            One BM25Adpt score per document, in corpus order.
+        """
         return self._core.get_scores(self._encode_query(query))
 
     def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+        """Return the highest-scoring document ids for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of results to return.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        """
         return self._core.get_top_n(self._encode_query(query), n)
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
+        """Return the highest-scoring document strings for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of documents to return.
+
+        Returns
+        -------
+        list[str]
+            Original corpus documents sorted by descending BM25Adpt score.
+        """
         return self._top_n_docs_from_corpus(query, n)
 
     def __repr__(self) -> str:
@@ -805,16 +1176,52 @@ class BM25Adpt(_TokenizerSupportMixin):
 
 
 class BM25F(_TokenizerSupportMixin):
+    """Field-weighted BM25 ranking model.
+
+    ``BM25F`` accepts documents represented as dictionaries of field name to
+    field text. Field weights boost or dampen each field's contribution to the
+    final score.
+
+    Parameters
+    ----------
+    corpus:
+        Non-empty sequence of field dictionaries. Each dictionary maps field
+        names to string values.
+    field_weights:
+        Mapping of field name to score multiplier, such as
+        ``{"title": 2.0, "body": 1.0}``.
+    k1:
+        Term-frequency saturation parameter.
+    epsilon:
+        Lower bound applied to IDF values.
+    lowercase:
+        Case-fold field text before indexing and querying.
+    tokenizer:
+        Tokenizer configuration or callable for the Python tokenizer pipeline.
+    stopwords:
+        Stopword configuration for the Python tokenizer pipeline.
+    extra_stopwords:
+        Additional stopwords to remove after ``stopwords`` are applied.
+    stemmer:
+        Optional callable that stems one token at a time.
+
+    Notes
+    -----
+    This is the Phase 1 BM25F skeleton. The public shape is available now, while
+    deeper field-specific scoring controls are planned for the roadmap's Phase
+    3 work.
+    """
+
     def __init__(
         self,
-        corpus: List[Dict[str, str]],
+        corpus: Sequence[Dict[str, str]],
         field_weights: Dict[str, float],
         k1: float = 1.5,
         epsilon: float = 0.25,
         lowercase: bool = True,
-        tokenizer=None,
-        stopwords=None,
-        extra_stopwords=None,
+        tokenizer: TokenizerSpec = None,
+        stopwords: StopwordSpec = None,
+        extra_stopwords: Optional[Sequence[str]] = None,
         stemmer: Optional[Callable[[str], str]] = None,
     ) -> None:
         if not corpus:
@@ -839,23 +1246,61 @@ class BM25F(_TokenizerSupportMixin):
 
     @property
     def k1(self) -> float:
+        """Term-frequency saturation parameter used by the model."""
         return self._core.k1
 
     @property
     def epsilon(self) -> float:
+        """Lower bound applied to IDF values."""
         return self._core.epsilon
 
     @property
     def corpus_size(self) -> int:
+        """Number of fielded documents currently indexed."""
         return self._core.corpus_size
 
     def set_field_b(self, field: str, b: float) -> None:
+        """Set the length-normalization value for one field.
+
+        Parameters
+        ----------
+        field:
+            Field name to configure.
+        b:
+            Field-specific length normalization parameter.
+        """
         self._core.set_field_b(field, b)
 
     def get_scores(self, query: str) -> List[float]:
+        """Score every indexed fielded document against ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+
+        Returns
+        -------
+        list[float]
+            One BM25F score per fielded document, in corpus order.
+        """
         return self._core.get_scores(self._encode_query(query))
 
     def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+        """Return the highest-scoring fielded document ids for ``query``.
+
+        Parameters
+        ----------
+        query:
+            Query text to tokenize and score.
+        n:
+            Maximum number of results to return.
+
+        Returns
+        -------
+        list[tuple[float, int]]
+            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        """
         return self._core.get_top_n(self._encode_query(query), n)
 
     def __repr__(self) -> str:
