@@ -11,6 +11,7 @@ loops.
    :caption: Contents
 
    getting-started
+   performance
    api
 
 Project Links

@@ -20,6 +20,7 @@ query times, especially on large corpora.
 
 ## Features
 
+- **SIMD scoring** - runtime dispatch to AVX2, SSE4.2, NEON, or scalar kernels  
 - 🚀 **C++ core** — compiled extension via pybind11, no Python loops in the hot path  
 - 📦 **Zero runtime dependencies** — pure C++17 standard library  
 - 🔧 **Tunable** — `k1`, `b`, `epsilon` exposed as constructor arguments  
@@ -114,7 +115,9 @@ Query:  "quick brown fox machine learning"
   Top-10 query           ~0.4 ms           ~8 ms                ~20x
 ```
 
-*Results vary by hardware. Run `python benchmarks/bench_flashbm25.py` to reproduce.*
+*Results vary by hardware. Run `python benchmarks/bench_flashbm25.py` for the
+rank_bm25 comparison or `python benchmarks/bench_competitors.py` for optional
+Whoosh, Tantivy, and Elasticsearch comparisons.*
 
 ## Development
 

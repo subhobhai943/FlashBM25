@@ -1,4 +1,5 @@
 #include "bm25.hpp"
+
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -44,10 +45,10 @@ std::uint32_t read_u32(std::istream& in) {
     if (!in) {
         throw std::runtime_error("BM25::load failed while reading uint32.");
     }
-    return static_cast<std::uint32_t>(buffer[0])
-        | (static_cast<std::uint32_t>(buffer[1]) << 8)
-        | (static_cast<std::uint32_t>(buffer[2]) << 16)
-        | (static_cast<std::uint32_t>(buffer[3]) << 24);
+    return static_cast<std::uint32_t>(buffer[0]) |
+           (static_cast<std::uint32_t>(buffer[1]) << 8) |
+           (static_cast<std::uint32_t>(buffer[2]) << 16) |
+           (static_cast<std::uint32_t>(buffer[3]) << 24);
 }
 
 std::uint64_t read_u64(std::istream& in) {
@@ -78,17 +79,34 @@ double read_f64(std::istream& in) {
     return value;
 }
 
+std::unordered_map<std::string, double>
+build_query_term_weights(const std::vector<std::string>& tokens,
+                         const std::unordered_map<std::string, double>& idf_cache) {
+    std::unordered_map<std::string, double> term_weights;
+    term_weights.reserve(tokens.size());
+
+    for (const auto& term : tokens) {
+        const auto idf_it = idf_cache.find(term);
+        if (idf_it == idf_cache.end() || idf_it->second == 0.0) {
+            continue;
+        }
+        term_weights[term] += idf_it->second;
+    }
+
+    return term_weights;
+}
+
 } // namespace
 
 namespace flashbm25 {
 
-BM25::BM25(const std::vector<std::string>& corpus,
-           float k1_, float b_, float epsilon_, bool lower)
-    : k1(k1_), b(b_), epsilon(epsilon_), lowercase(lower),
-      num_docs(corpus.size()), avgdl(0.0)
-{
+BM25::BM25(const std::vector<std::string>& corpus, float k1_, float b_, float epsilon_,
+           bool lower)
+    : k1(k1_), b(b_), epsilon(epsilon_), lowercase(lower), num_docs(corpus.size()),
+      avgdl(0.0) {
     _build_index(corpus);
     _build_idf();
+    _build_postings_index();
 }
 
 void BM25::_build_index(const std::vector<std::string>& corpus) {
@@ -98,26 +116,36 @@ void BM25::_build_index(const std::vector<std::string>& corpus) {
 
     for (std::size_t i = 0; i < num_docs; ++i) {
         auto tokens = tokenize(corpus[i], lowercase);
-        double len  = static_cast<double>(tokens.size());
+        const double len = static_cast<double>(tokens.size());
         doc_len.push_back(len);
         total_len += len;
 
         std::unordered_map<std::string, double> freq;
-        for (const auto& t : tokens) freq[t] += 1.0;
-        for (auto& [term, cnt] : freq) tf_index[term][i] = cnt;
+        for (const auto& token : tokens) {
+            freq[token] += 1.0;
+        }
+        for (auto& [term, count] : freq) {
+            tf_index[term][i] = count;
+        }
 
         tokenized_corpus.push_back(std::move(tokens));
     }
+
     avgdl = (num_docs > 0) ? (total_len / static_cast<double>(num_docs)) : 0.0;
 }
 
 void BM25::_build_idf() {
     idf_cache.clear();
     for (auto& [term, postings] : tf_index) {
-        double df  = static_cast<double>(postings.size());
-        double val = std::log((static_cast<double>(num_docs) - df + 0.5) / (df + 0.5) + 1.0);
-        idf_cache[term] = std::max(static_cast<double>(epsilon), val);
+        const double df = static_cast<double>(postings.size());
+        const double value =
+            std::log((static_cast<double>(num_docs) - df + 0.5) / (df + 0.5) + 1.0);
+        idf_cache[term] = std::max(static_cast<double>(epsilon), value);
     }
+}
+
+void BM25::_build_postings_index() {
+    rebuild_postings_index(tf_index, postings_index);
 }
 
 double BM25::_idf(const std::string& term) const {
@@ -127,42 +155,49 @@ double BM25::_idf(const std::string& term) const {
 
 std::vector<double> BM25::get_scores(const std::string& query) const {
     std::vector<double> scores(num_docs, 0.0);
-    for (const auto& term : tokenize(query, lowercase)) {
-        double idf_val = _idf(term);
-        if (idf_val == 0.0) continue;
-        auto it = tf_index.find(term);
-        if (it == tf_index.end()) continue;
-        for (const auto& [doc_id, tf] : it->second) {
-            double dl   = doc_len[doc_id];
-            double norm = 1.0 - b + b * (dl / avgdl);
-            scores[doc_id] += idf_val * (tf * (k1 + 1.0)) / (tf + k1 * norm);
+
+    const auto term_weights = build_query_term_weights(tokenize(query, lowercase), idf_cache);
+    for (const auto& [term, term_weight] : term_weights) {
+        auto it = postings_index.find(term);
+        if (it == postings_index.end()) {
+            continue;
         }
+        score_okapi_postings(it->second, doc_len, avgdl, k1, b, term_weight, scores);
     }
     return scores;
 }
 
-std::vector<std::pair<double, std::size_t>>
-BM25::get_top_n(const std::string& query, std::size_t n) const {
+std::vector<std::pair<double, std::size_t>> BM25::get_top_n(const std::string& query,
+                                                            std::size_t n) const {
     auto scores = get_scores(query);
     std::vector<std::size_t> idx(num_docs);
     std::iota(idx.begin(), idx.end(), 0);
+
     n = std::min(n, num_docs);
     std::partial_sort(idx.begin(), idx.begin() + static_cast<std::ptrdiff_t>(n), idx.end(),
-        [&scores](std::size_t a, std::size_t b_) { return scores[a] > scores[b_]; });
+                      [&scores](std::size_t lhs, std::size_t rhs) {
+                          return scores[lhs] > scores[rhs];
+                      });
+
     std::vector<std::pair<double, std::size_t>> result;
     result.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) result.emplace_back(scores[idx[i]], idx[i]);
+    for (std::size_t i = 0; i < n; ++i) {
+        result.emplace_back(scores[idx[i]], idx[i]);
+    }
     return result;
 }
 
-std::vector<std::string>
-BM25::get_top_n_docs(const std::vector<std::string>& corpus,
-                     const std::string& query, std::size_t n) const {
+std::vector<std::string> BM25::get_top_n_docs(const std::vector<std::string>& corpus,
+                                              const std::string& query,
+                                              std::size_t n) const {
     auto top = get_top_n(query, n);
     std::vector<std::string> docs;
     docs.reserve(top.size());
-    for (auto& [score, idx] : top)
-        if (idx < corpus.size()) docs.push_back(corpus[idx]);
+    for (auto& [score, idx] : top) {
+        if (idx < corpus.size()) {
+            docs.push_back(corpus[idx]);
+        }
+    }
     return docs;
 }
 
@@ -197,6 +232,7 @@ void BM25::add_documents(const std::vector<std::string>& documents) {
     num_docs = doc_len.size();
     avgdl = (num_docs > 0) ? (total_len / static_cast<double>(num_docs)) : 0.0;
     _build_idf();
+    _build_postings_index();
 }
 
 void BM25::_write_serialized(std::ostream& out) const {
@@ -254,7 +290,8 @@ BM25 BM25::_read_serialized(std::istream& in) {
     const auto loaded_epsilon = read_f32(in);
     const auto loaded_lowercase = read_u32(in) != 0;
 
-    BM25 bm25(std::vector<std::string>{}, loaded_k1, loaded_b, loaded_epsilon, loaded_lowercase);
+    BM25 bm25(std::vector<std::string>{}, loaded_k1, loaded_b, loaded_epsilon,
+              loaded_lowercase);
     bm25.num_docs = static_cast<std::size_t>(read_u64(in));
     const auto num_terms = read_u64(in);
     bm25.tf_index.clear();
@@ -276,10 +313,7 @@ BM25 BM25::_read_serialized(std::istream& in) {
         auto& postings = bm25.tf_index[term];
         postings.reserve(static_cast<std::size_t>(postings_count));
         for (std::uint64_t posting_index = 0; posting_index < postings_count; ++posting_index) {
-            postings.emplace(
-                static_cast<std::size_t>(read_u64(in)),
-                read_f64(in)
-            );
+            postings.emplace(static_cast<std::size_t>(read_u64(in)), read_f64(in));
         }
     }
 
@@ -295,6 +329,7 @@ BM25 BM25::_read_serialized(std::istream& in) {
     }
 
     bm25._build_idf();
+    bm25._build_postings_index();
     return bm25;
 }
 

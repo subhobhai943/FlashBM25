@@ -36,7 +36,7 @@ dev   = [
   "ruff>=0.5",
   "numpy",
 ]
-bench = ["rank_bm25", "numpy"]
+bench = ["rank_bm25", "numpy", "whoosh", "tantivy", "elasticsearch"]
 docs = [
   "sphinx>=7.1",
 ]

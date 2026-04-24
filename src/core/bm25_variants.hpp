@@ -1,141 +1,150 @@
 #pragma once
-// BM25+ and BM25L — drop-in replacements for classic BM25.
-//
-// BM25+  (Lv & Zhai, 2011) — adds a lower-bound delta to the TF component so
-//         that a term that appears at least once in a document always gets
-//         a positive contribution, fixing the "over-penalization" problem.
-//
-// BM25L  (Lv & Zhai, 2011) — normalizes the average TF before applying the
-//         length-normalization so that the effective TF for long docs is not
-//         artificially depressed.
 
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <cmath>
+// BM25+ and BM25L are drop-in replacements for classic BM25.
+//
+// BM25+ (Lv & Zhai, 2011) adds a lower-bound delta to the TF component so a
+// term that appears at least once in a document always contributes positively.
+//
+// BM25L (Lv & Zhai, 2011) normalizes average TF before applying length
+// normalization so long documents are not over-penalized.
+
 #include <algorithm>
+#include <cmath>
 #include <numeric>
-#include "bm25.hpp"  // reuses tokenize() and the same index structures
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "bm25.hpp"
+#include "simd_scoring.hpp"
 
 namespace flashbm25 {
 
-// ─── BM25+ ────────────────────────────────────────────────────────────────────
-// delta > 0 (typically 1.0) prevents TF from reaching 0 when tf is very small.
 class BM25Plus {
 public:
-    float  k1;
-    float  b;
-    float  delta;     // lower-bound addition (Lv & Zhai recommend 1.0)
-    float  epsilon;
-    bool   lowercase;
+    float k1;
+    float b;
+    float delta;
+    float epsilon;
+    bool lowercase;
 
     std::size_t num_docs;
-    double      avgdl;
+    double avgdl;
 
-    std::vector<double>                                                doc_len;
-    std::unordered_map<std::string, std::unordered_map<std::size_t, double>> tf_index;
-    std::unordered_map<std::string, double>                            idf_cache;
+    std::vector<double> doc_len;
+    TfIndex tf_index;
+    PostingsIndex postings_index;
+    std::unordered_map<std::string, double> idf_cache;
 
-    explicit BM25Plus(
-        const std::vector<std::string>& corpus,
-        float k1_    = 1.5f,
-        float b_     = 0.75f,
-        float delta_ = 1.0f,
-        float eps_   = 0.25f,
-        bool  lower  = true
-    );
+    explicit BM25Plus(const std::vector<std::string>& corpus,
+                      float k1_ = 1.5f,
+                      float b_ = 0.75f,
+                      float delta_ = 1.0f,
+                      float eps_ = 0.25f,
+                      bool lower = true);
 
-    std::vector<double>                         get_scores(const std::string& query) const;
-    std::vector<std::pair<double, std::size_t>> get_top_n (const std::string& query, std::size_t n = 5) const;
+    std::vector<double> get_scores(const std::string& query) const;
+    std::vector<std::pair<double, std::size_t>> get_top_n(const std::string& query,
+                                                          std::size_t n = 5) const;
 
-    std::size_t corpus_size()        const { return num_docs; }
-    double      average_doc_length() const { return avgdl; }
+    std::size_t corpus_size() const {
+        return num_docs;
+    }
+
+    double average_doc_length() const {
+        return avgdl;
+    }
 
 private:
     double _idf(const std::string& term) const;
-    void   _build_index(const std::vector<std::string>& corpus);
-    void   _build_idf();
+    void _build_index(const std::vector<std::string>& corpus);
+    void _build_idf();
+    void _build_postings_index();
 };
 
-// ─── BM25L ────────────────────────────────────────────────────────────────────
-// ctf_hat is the normalized TF; delta is added to the normalised score
-// before multiplication with IDF, further reducing the penalty on long docs.
 class BM25L {
 public:
-    float  k1;
-    float  b;
-    float  delta;     // recommended range 0.0–0.5
-    float  epsilon;
-    bool   lowercase;
+    float k1;
+    float b;
+    float delta;
+    float epsilon;
+    bool lowercase;
 
     std::size_t num_docs;
-    double      avgdl;
+    double avgdl;
 
-    std::vector<double>                                                doc_len;
-    std::unordered_map<std::string, std::unordered_map<std::size_t, double>> tf_index;
-    std::unordered_map<std::string, double>                            idf_cache;
+    std::vector<double> doc_len;
+    TfIndex tf_index;
+    PostingsIndex postings_index;
+    std::unordered_map<std::string, double> idf_cache;
 
-    explicit BM25L(
-        const std::vector<std::string>& corpus,
-        float k1_    = 1.5f,
-        float b_     = 0.75f,
-        float delta_ = 0.5f,
-        float eps_   = 0.25f,
-        bool  lower  = true
-    );
+    explicit BM25L(const std::vector<std::string>& corpus,
+                   float k1_ = 1.5f,
+                   float b_ = 0.75f,
+                   float delta_ = 0.5f,
+                   float eps_ = 0.25f,
+                   bool lower = true);
 
-    std::vector<double>                         get_scores(const std::string& query) const;
-    std::vector<std::pair<double, std::size_t>> get_top_n (const std::string& query, std::size_t n = 5) const;
+    std::vector<double> get_scores(const std::string& query) const;
+    std::vector<std::pair<double, std::size_t>> get_top_n(const std::string& query,
+                                                          std::size_t n = 5) const;
 
-    std::size_t corpus_size()        const { return num_docs; }
-    double      average_doc_length() const { return avgdl; }
+    std::size_t corpus_size() const {
+        return num_docs;
+    }
+
+    double average_doc_length() const {
+        return avgdl;
+    }
 
 private:
     double _idf(const std::string& term) const;
-    void   _build_index(const std::vector<std::string>& corpus);
-    void   _build_idf();
+    void _build_index(const std::vector<std::string>& corpus);
+    void _build_idf();
+    void _build_postings_index();
 };
 
-// ─── BM25Adpt ─────────────────────────────────────────────────────────────────
-// Adaptive k1 per term (Lv & Zhai, 2011): k1 is adjusted for each query term
-// based on that term's average TF across documents that contain it.  High-mean-TF
-// terms get a higher k1 (slower saturation), low-mean-TF terms get a lower k1
-// (faster saturation).
 class BM25Adpt {
 public:
-    float  k1;        // base k1 (used as scaling anchor)
-    float  b;
-    float  epsilon;
-    bool   lowercase;
+    float k1;
+    float b;
+    float epsilon;
+    bool lowercase;
 
     std::size_t num_docs;
-    double      avgdl;
+    double avgdl;
 
-    std::vector<double>                                                doc_len;
-    std::unordered_map<std::string, std::unordered_map<std::size_t, double>> tf_index;
-    std::unordered_map<std::string, double>                            idf_cache;
-    std::unordered_map<std::string, double>                            k1_cache; // per-term adaptive k1
+    std::vector<double> doc_len;
+    TfIndex tf_index;
+    PostingsIndex postings_index;
+    std::unordered_map<std::string, double> idf_cache;
+    std::unordered_map<std::string, double> k1_cache;
 
-    explicit BM25Adpt(
-        const std::vector<std::string>& corpus,
-        float k1_  = 1.5f,
-        float b_   = 0.75f,
-        float eps_  = 0.25f,
-        bool  lower = true
-    );
+    explicit BM25Adpt(const std::vector<std::string>& corpus,
+                      float k1_ = 1.5f,
+                      float b_ = 0.75f,
+                      float eps_ = 0.25f,
+                      bool lower = true);
 
-    std::vector<double>                         get_scores(const std::string& query) const;
-    std::vector<std::pair<double, std::size_t>> get_top_n (const std::string& query, std::size_t n = 5) const;
+    std::vector<double> get_scores(const std::string& query) const;
+    std::vector<std::pair<double, std::size_t>> get_top_n(const std::string& query,
+                                                          std::size_t n = 5) const;
 
-    std::size_t corpus_size()        const { return num_docs; }
-    double      average_doc_length() const { return avgdl; }
+    std::size_t corpus_size() const {
+        return num_docs;
+    }
+
+    double average_doc_length() const {
+        return avgdl;
+    }
 
 private:
     double _idf(const std::string& term) const;
     double _adaptive_k1(const std::string& term) const;
-    void   _build_index(const std::vector<std::string>& corpus);
-    void   _build_idf();
-    void   _build_adaptive_k1();
+    void _build_index(const std::vector<std::string>& corpus);
+    void _build_idf();
+    void _build_postings_index();
+    void _build_adaptive_k1();
 };
 
 } // namespace flashbm25

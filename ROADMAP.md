@@ -66,10 +66,10 @@ docs site configured for Read the Docs.
 to 100 M docs.
 
 ### 2.1 — SIMD & CPU Optimisations
-- [ ] Port inner-product loop to AVX2 intrinsics with SSE4.2 fallback
-- [ ] Investigate NEON path for Apple Silicon / ARM
-- [ ] Profile with `perf` / VTune and eliminate top-3 hotspots
-- [ ] Benchmark against Whoosh, Tantivy (via Python bindings), Elasticsearch BM25
+- [x] Port inner-product loop to AVX2 intrinsics with SSE4.2 fallback
+- [x] Investigate NEON path for Apple Silicon / ARM
+- [x] Profile with `perf` / VTune and eliminate top-3 hotspots
+- [x] Benchmark against Whoosh, Tantivy (via Python bindings), Elasticsearch BM25
 
 ### 2.2 — Parallel & Async Query
 - [ ] Batch query API: `bm25.get_scores_batch(queries: list[str]) -> np.ndarray`
