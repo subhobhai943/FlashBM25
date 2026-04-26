@@ -72,10 +72,10 @@ to 100 M docs.
 - [x] Benchmark against Whoosh, Tantivy (via Python bindings), Elasticsearch BM25
 
 ### 2.2 — Parallel & Async Query
-- [ ] Batch query API: `bm25.get_scores_batch(queries: list[str]) -> np.ndarray`
-- [ ] Thread-pool executor for batch queries (configurable `n_jobs`)
-- [ ] Async interface: `await bm25.aget_scores(query)` using `asyncio.to_thread`
-- [ ] Release the GIL in all hot-path pybind11 calls
+- [x] Batch query API: `bm25.get_scores_batch(queries: list[str]) -> np.ndarray`
+- [x] Thread-pool executor for batch queries (configurable `n_jobs`)
+- [x] Async interface: `await bm25.aget_scores(query)` using `asyncio.to_thread`
+- [x] Release the GIL in all hot-path pybind11 calls
 
 ### 2.3 — Memory-Efficient Index Structures
 - [ ] Switch inverted index from `std::unordered_map` to a compact sorted postings list

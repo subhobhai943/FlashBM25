@@ -38,6 +38,7 @@ from .tokenizer import (
     _TokenEncoder,
     _build_tokenizer_callable,
 )
+from .parallel import AsyncBatchMixin
 
 __version__ = "0.2.0"
 __all__ = [
@@ -293,7 +294,7 @@ def _prepare_field_corpus(
     return encoded_corpus, query_tokenizer, token_encoder
 
 
-class BM25(_TokenizerSupportMixin):
+class BM25(_TokenizerSupportMixin, AsyncBatchMixin):
     """Okapi BM25 ranking model backed by a C++ inverted index.
 
     ``BM25`` indexes a non-empty corpus of text documents and scores every
@@ -351,6 +352,18 @@ class BM25(_TokenizerSupportMixin):
     :class:`BM25`; ``"l"`` and ``"bm25l"`` return :class:`BM25L`; ``"plus"``,
     ``"bm25+"``, and ``"bm25plus"`` return :class:`BM25Plus`; ``"adpt"``,
     ``"adaptive"``, and ``"bm25adpt"`` return :class:`BM25Adpt`.
+
+    **Parallel & async (§2.2)**
+
+    Use :meth:`get_scores_batch` to score a list of queries in one call::
+
+        scores = bm25.get_scores_batch(["query one", "query two"], n_jobs=-1)
+        # scores.shape == (2, corpus_size), dtype float32
+
+    For async frameworks::
+
+        scores = await bm25.aget_scores("query")
+        matrix = await bm25.aget_scores_batch(["q1", "q2"])
     """
 
     def __new__(
@@ -732,7 +745,7 @@ class BM25(_TokenizerSupportMixin):
         )
 
 
-class BM25L(_TokenizerSupportMixin):
+class BM25L(_TokenizerSupportMixin, AsyncBatchMixin):
     """BM25L ranking model with a lower-bounded length-normalized TF term.
 
     BM25L reduces the tendency of classic BM25 to over-penalize long documents.
@@ -882,7 +895,7 @@ class BM25L(_TokenizerSupportMixin):
         )
 
 
-class BM25Plus(_TokenizerSupportMixin):
+class BM25Plus(_TokenizerSupportMixin, AsyncBatchMixin):
     """BM25Plus ranking model with a positive lower-bound TF contribution.
 
     BM25Plus adds ``delta`` to the matching-term contribution, which helps avoid
@@ -1033,7 +1046,7 @@ class BM25Plus(_TokenizerSupportMixin):
         )
 
 
-class BM25Adpt(_TokenizerSupportMixin):
+class BM25Adpt(_TokenizerSupportMixin, AsyncBatchMixin):
     """BM25Adpt ranking model with adaptive per-term saturation.
 
     BM25Adpt starts from a base ``k1`` value and adapts saturation behavior per
@@ -1175,7 +1188,7 @@ class BM25Adpt(_TokenizerSupportMixin):
         )
 
 
-class BM25F(_TokenizerSupportMixin):
+class BM25F(_TokenizerSupportMixin, AsyncBatchMixin):
     """Field-weighted BM25 ranking model.
 
     ``BM25F`` accepts documents represented as dictionaries of field name to
