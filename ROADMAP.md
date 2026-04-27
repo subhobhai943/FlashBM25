@@ -78,10 +78,10 @@ to 100 M docs.
 - [x] Release the GIL in all hot-path pybind11 calls
 
 ### 2.3 — Memory-Efficient Index Structures
-- [ ] Switch inverted index from `std::unordered_map` to a compact sorted postings list
-- [ ] Compressed posting lists (delta-coded doc IDs + VarInt TF encoding)
-- [ ] Memory-mapped index for corpora that don't fit in RAM (`mmap` backend)
-- [ ] On-disk streaming index builder for very large corpora (chunked ingestion)
+- [x] Switch inverted index from `std::unordered_map` to a compact sorted postings list
+- [x] Compressed posting lists (delta-coded doc IDs + VarInt TF encoding)
+- [x] Memory-mapped index for corpora that don't fit in RAM (`mmap` backend)
+- [x] On-disk streaming index builder for very large corpora (chunked ingestion)
 
 ### 2.4 — NumPy / SciPy Integration
 - [ ] `get_scores` returns `np.ndarray` (float32) instead of `list[float]` — zero-copy via buffer protocol
