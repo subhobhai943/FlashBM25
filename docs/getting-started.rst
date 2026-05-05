@@ -14,9 +14,10 @@ Install the package from PyPI:
 
    pip install flashbm25
 
-FlashBM25 has no mandatory runtime dependencies. Source installs require a
-C++17 compiler, CMake, pybind11, and scikit-build-core because the extension is
-compiled during installation.
+NumPy is installed automatically for score arrays. Install
+``flashbm25[sparse]`` when you want large batch results as SciPy CSR matrices.
+Source installs require a C++17 compiler, CMake, pybind11, and
+scikit-build-core because the extension is compiled during installation.
 
 Build Your First Index
 ----------------------
@@ -35,9 +36,25 @@ Build Your First Index
    scores = bm25.get_scores("bm25 retrieval")
    top_docs = bm25.get_top_n_docs("bm25 retrieval", n=2)
 
-``get_scores`` returns one score per indexed document. ``get_top_n`` returns
-``(score, doc_index)`` pairs sorted from highest to lowest score, and
-``get_top_n_docs`` resolves those indices back to the original corpus strings.
+``get_scores`` returns a float32 NumPy array with one score per indexed
+document. ``get_top_n`` returns a structured NumPy array with ``score`` and
+``doc_id`` fields sorted from highest to lowest score, and ``get_top_n_docs``
+resolves those indices back to the original corpus strings.
+
+Batch Scores
+------------
+
+Use ``get_scores_batch`` for many queries. Small batches return a dense
+float32 NumPy array. Large batches can return a SciPy CSR matrix automatically,
+or you can request sparse output explicitly:
+
+.. code-block:: python
+
+   dense = bm25.get_scores_batch(["bm25 retrieval", "machine learning"])
+   sparse = bm25.get_scores_batch(
+       ["bm25 retrieval", "machine learning"],
+       sparse=True,
+   )
 
 Choose a BM25 Variant
 ---------------------

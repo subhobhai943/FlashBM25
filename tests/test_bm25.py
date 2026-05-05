@@ -2,6 +2,7 @@
 pytest test suite for FlashBM25.
 Run with:  pytest tests/ -v
 """
+import numpy as np
 import pytest
 
 try:
@@ -51,6 +52,8 @@ def test_custom_params():
 def test_get_scores_returns_correct_length():
     bm25   = BM25(CORPUS)
     scores = bm25.get_scores("fox")
+    assert isinstance(scores, np.ndarray)
+    assert scores.dtype == np.float32
     assert len(scores) == len(CORPUS)
 
 
@@ -72,7 +75,7 @@ def test_get_scores_unknown_query_all_zeros():
 def test_get_scores_relevant_doc_scores_highest():
     bm25   = BM25(CORPUS)
     scores = bm25.get_scores("BM25 retrieval search")
-    best   = scores.index(max(scores))
+    best   = int(scores.argmax())
     assert best == 5
 
 
@@ -80,6 +83,10 @@ def test_get_scores_relevant_doc_scores_highest():
 def test_get_top_n_length():
     bm25 = BM25(CORPUS)
     top  = bm25.get_top_n("fox", n=3)
+    assert isinstance(top, np.ndarray)
+    assert top.dtype.names == ("score", "doc_id")
+    assert top.dtype["score"] == np.dtype("float32")
+    assert top.dtype["doc_id"] == np.dtype("uint32")
     assert len(top) == 3
 
 
@@ -87,7 +94,7 @@ def test_get_top_n_length():
 def test_get_top_n_sorted_descending():
     bm25   = BM25(CORPUS)
     top    = bm25.get_top_n("machine learning deep", n=4)
-    scores = [s for s, _ in top]
+    scores = top["score"].tolist()
     assert scores == sorted(scores, reverse=True)
 
 
@@ -134,7 +141,7 @@ def test_save_and_load_roundtrip(tmp_path):
 
     assert loaded.corpus_size == bm25.corpus_size
     assert loaded.avg_doc_length == pytest.approx(bm25.avg_doc_length)
-    assert loaded.get_scores("BM25 retrieval search") == pytest.approx(expected_scores)
+    np.testing.assert_allclose(loaded.get_scores("BM25 retrieval search"), expected_scores)
     assert loaded.get_top_n_docs("fox", n=2) == expected_docs
 
 
@@ -265,7 +272,7 @@ def test_bm25l_scores_non_negative():
 def test_bm25l_top_n_sorted_descending():
     bm25   = BM25L(CORPUS)
     top    = bm25.get_top_n("machine learning deep", n=4)
-    scores = [s for s, _ in top]
+    scores = top["score"].tolist()
     assert scores == sorted(scores, reverse=True)
 
 
@@ -333,7 +340,7 @@ def test_bm25plus_scores_higher_than_okapi():
 def test_bm25plus_top_n_sorted_descending():
     bm25   = BM25Plus(CORPUS)
     top    = bm25.get_top_n("machine learning deep", n=4)
-    scores = [s for s, _ in top]
+    scores = top["score"].tolist()
     assert scores == sorted(scores, reverse=True)
 
 
@@ -395,7 +402,7 @@ def test_bm25adpt_unknown_query_all_zeros():
 def test_bm25adpt_top_n_sorted_descending():
     bm25   = BM25Adpt(CORPUS)
     top    = bm25.get_top_n("machine learning deep", n=4)
-    scores = [s for s, _ in top]
+    scores = top["score"].tolist()
     assert scores == sorted(scores, reverse=True)
 
 
@@ -411,7 +418,7 @@ def test_bm25adpt_top_n_docs():
 def test_bm25adpt_relevant_doc_scores_highest():
     bm25   = BM25Adpt(CORPUS)
     scores = bm25.get_scores("BM25 retrieval search")
-    best   = scores.index(max(scores))
+    best   = int(scores.argmax())
     assert best == 5
 
 
@@ -466,7 +473,7 @@ def test_bm25f_title_boost():
     bm25f  = BM25F(FIELD_CORPUS, field_weights={"title": 2.0, "body": 1.0})
     scores = bm25f.get_scores("BM25")
     # Doc 0 has "BM25" in both title and body — should score highest
-    best = scores.index(max(scores))
+    best = int(scores.argmax())
     assert best == 0
 
 
@@ -474,7 +481,7 @@ def test_bm25f_title_boost():
 def test_bm25f_top_n_sorted_descending():
     bm25f = BM25F(FIELD_CORPUS, field_weights={"title": 2.0, "body": 1.0})
     top   = bm25f.get_top_n("deep learning", n=3)
-    scores = [s for s, _ in top]
+    scores = top["score"].tolist()
     assert scores == sorted(scores, reverse=True)
 
 

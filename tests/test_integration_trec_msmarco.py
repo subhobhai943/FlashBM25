@@ -62,7 +62,8 @@ def test_known_pairs_retrieve_expected_documents(scenario, variant_name, builder
     scores = model.get_scores(scenario["query"])
 
     top_n = min(3, len(corpus))
-    top_indices = [doc_index for _, doc_index in model.get_top_n(scenario["query"], n=top_n)]
+    top = model.get_top_n(scenario["query"], n=top_n)
+    top_indices = [int(doc_index) for doc_index in top["doc_id"]]
     top_doc_ids = {doc_ids[index] for index in top_indices}
 
     assert top_doc_ids.intersection(relevant_doc_ids), (

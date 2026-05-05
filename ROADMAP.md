@@ -84,9 +84,9 @@ to 100 M docs.
 - [x] On-disk streaming index builder for very large corpora (chunked ingestion)
 
 ### 2.4 — NumPy / SciPy Integration
-- [ ] `get_scores` returns `np.ndarray` (float32) instead of `list[float]` — zero-copy via buffer protocol
-- [ ] Sparse score matrix: `get_scores_batch` returns `scipy.sparse.csr_matrix` for large batch × corpus results
-- [ ] `get_top_n` returns structured NumPy record array `(score: f32, doc_id: u32)`
+- [x] `get_scores` returns `np.ndarray` (float32) instead of `list[float]` — zero-copy via buffer protocol
+- [x] Sparse score matrix: `get_scores_batch` returns `scipy.sparse.csr_matrix` for large batch × corpus results
+- [x] `get_top_n` returns structured NumPy record array `(score: f32, doc_id: u32)`
 
 ### 2.5 — Benchmarking Suite
 - [ ] Automate benchmark runs in CI on every release tag

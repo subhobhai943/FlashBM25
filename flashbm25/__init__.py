@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import os
 import struct
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Union
+
+import numpy as np
 
 try:
     from ._flashbm25 import (
@@ -66,6 +68,29 @@ _VARIANT_MAP = {
 
 _PERSISTENCE_MAGIC = b"FBM25PY\x00"
 _PERSISTENCE_VERSION = 1
+_TOP_N_DTYPE = np.dtype([("score", np.float32), ("doc_id", np.uint32)])
+
+
+def _as_score_array(values) -> np.ndarray:
+    return np.asarray(values, dtype=np.float32)
+
+
+def _as_top_n_array(values) -> np.ndarray:
+    array = np.asarray(values)
+    if (
+        array.dtype.names is not None
+        and {"score", "doc_id"}.issubset(array.dtype.names)
+    ):
+        if array.dtype == _TOP_N_DTYPE:
+            return array
+        normalized = np.empty(array.shape, dtype=_TOP_N_DTYPE)
+        normalized["score"] = array["score"].astype(np.float32, copy=False)
+        normalized["doc_id"] = array["doc_id"].astype(np.uint32, copy=False)
+        return normalized
+    return np.asarray(
+        [(float(score), int(doc_id)) for score, doc_id in values],
+        dtype=_TOP_N_DTYPE,
+    )
 
 
 def _coerce_documents(documents: Iterable[str], *, source: str) -> List[str]:
@@ -233,7 +258,15 @@ class _TokenizerSupportMixin:
 
     def _top_n_docs_from_corpus(self, query: str, n: int = 5) -> List[str]:
         top = self.get_top_n(query, n)
-        return [self._corpus[idx] for _, idx in top if idx < len(self._corpus)]
+        if (
+            isinstance(top, np.ndarray)
+            and top.dtype.names is not None
+            and "doc_id" in top.dtype.names
+        ):
+            doc_ids = top["doc_id"]
+        else:
+            doc_ids = [doc_id for _, doc_id in top]
+        return [self._corpus[int(idx)] for idx in doc_ids if int(idx) < len(self._corpus)]
 
 
 def _prepare_text_corpus(
@@ -359,6 +392,8 @@ class BM25(_TokenizerSupportMixin, AsyncBatchMixin):
 
         scores = bm25.get_scores_batch(["query one", "query two"], n_jobs=-1)
         # scores.shape == (2, corpus_size), dtype float32
+        sparse_scores = bm25.get_scores_batch(["query one", "query two"], sparse=True)
+        # scipy.sparse.csr_matrix when SciPy is installed
 
     For async frameworks::
 
@@ -688,7 +723,7 @@ class BM25(_TokenizerSupportMixin, AsyncBatchMixin):
         """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
-    def get_scores(self, query: str) -> List[float]:
+    def get_scores(self, query: str) -> np.ndarray:
         """Score every indexed document against ``query``.
 
         Parameters
@@ -698,12 +733,12 @@ class BM25(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[float]
-            One BM25 score per document, in corpus order.
+        np.ndarray
+            Float32 score vector with one BM25 score per document, in corpus order.
         """
-        return self._core.get_scores(self._encode_query(query))
+        return _as_score_array(self._core.get_scores(self._encode_query(query)))
 
-    def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+    def get_top_n(self, query: str, n: int = 5) -> np.ndarray:
         """Return the highest-scoring document ids for ``query``.
 
         Parameters
@@ -715,10 +750,11 @@ class BM25(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[tuple[float, int]]
-            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        np.ndarray
+            Structured record array with ``score`` (float32) and ``doc_id``
+            (uint32) fields, sorted from highest to lowest score.
         """
-        return self._core.get_top_n(self._encode_query(query), n)
+        return _as_top_n_array(self._core.get_top_n(self._encode_query(query), n))
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
         """Return the highest-scoring document strings for ``query``.
@@ -838,7 +874,7 @@ class BM25L(_TokenizerSupportMixin, AsyncBatchMixin):
         """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
-    def get_scores(self, query: str) -> List[float]:
+    def get_scores(self, query: str) -> np.ndarray:
         """Score every indexed document against ``query``.
 
         Parameters
@@ -848,12 +884,12 @@ class BM25L(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[float]
-            One BM25L score per document, in corpus order.
+        np.ndarray
+            Float32 score vector with one BM25L score per document, in corpus order.
         """
-        return self._core.get_scores(self._encode_query(query))
+        return _as_score_array(self._core.get_scores(self._encode_query(query)))
 
-    def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+    def get_top_n(self, query: str, n: int = 5) -> np.ndarray:
         """Return the highest-scoring document ids for ``query``.
 
         Parameters
@@ -865,10 +901,11 @@ class BM25L(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[tuple[float, int]]
-            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        np.ndarray
+            Structured record array with ``score`` (float32) and ``doc_id``
+            (uint32) fields, sorted from highest to lowest score.
         """
-        return self._core.get_top_n(self._encode_query(query), n)
+        return _as_top_n_array(self._core.get_top_n(self._encode_query(query), n))
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
         """Return the highest-scoring document strings for ``query``.
@@ -989,7 +1026,7 @@ class BM25Plus(_TokenizerSupportMixin, AsyncBatchMixin):
         """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
-    def get_scores(self, query: str) -> List[float]:
+    def get_scores(self, query: str) -> np.ndarray:
         """Score every indexed document against ``query``.
 
         Parameters
@@ -999,12 +1036,12 @@ class BM25Plus(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[float]
-            One BM25Plus score per document, in corpus order.
+        np.ndarray
+            Float32 score vector with one BM25Plus score per document, in corpus order.
         """
-        return self._core.get_scores(self._encode_query(query))
+        return _as_score_array(self._core.get_scores(self._encode_query(query)))
 
-    def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+    def get_top_n(self, query: str, n: int = 5) -> np.ndarray:
         """Return the highest-scoring document ids for ``query``.
 
         Parameters
@@ -1016,10 +1053,11 @@ class BM25Plus(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[tuple[float, int]]
-            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        np.ndarray
+            Structured record array with ``score`` (float32) and ``doc_id``
+            (uint32) fields, sorted from highest to lowest score.
         """
-        return self._core.get_top_n(self._encode_query(query), n)
+        return _as_top_n_array(self._core.get_top_n(self._encode_query(query), n))
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
         """Return the highest-scoring document strings for ``query``.
@@ -1131,7 +1169,7 @@ class BM25Adpt(_TokenizerSupportMixin, AsyncBatchMixin):
         """Average indexed document length measured in tokens."""
         return self._core.avg_doc_length
 
-    def get_scores(self, query: str) -> List[float]:
+    def get_scores(self, query: str) -> np.ndarray:
         """Score every indexed document against ``query``.
 
         Parameters
@@ -1141,12 +1179,12 @@ class BM25Adpt(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[float]
-            One BM25Adpt score per document, in corpus order.
+        np.ndarray
+            Float32 score vector with one BM25Adpt score per document, in corpus order.
         """
-        return self._core.get_scores(self._encode_query(query))
+        return _as_score_array(self._core.get_scores(self._encode_query(query)))
 
-    def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+    def get_top_n(self, query: str, n: int = 5) -> np.ndarray:
         """Return the highest-scoring document ids for ``query``.
 
         Parameters
@@ -1158,10 +1196,11 @@ class BM25Adpt(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[tuple[float, int]]
-            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        np.ndarray
+            Structured record array with ``score`` (float32) and ``doc_id``
+            (uint32) fields, sorted from highest to lowest score.
         """
-        return self._core.get_top_n(self._encode_query(query), n)
+        return _as_top_n_array(self._core.get_top_n(self._encode_query(query), n))
 
     def get_top_n_docs(self, query: str, n: int = 5) -> List[str]:
         """Return the highest-scoring document strings for ``query``.
@@ -1284,7 +1323,7 @@ class BM25F(_TokenizerSupportMixin, AsyncBatchMixin):
         """
         self._core.set_field_b(field, b)
 
-    def get_scores(self, query: str) -> List[float]:
+    def get_scores(self, query: str) -> np.ndarray:
         """Score every indexed fielded document against ``query``.
 
         Parameters
@@ -1294,12 +1333,12 @@ class BM25F(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[float]
-            One BM25F score per fielded document, in corpus order.
+        np.ndarray
+            Float32 score vector with one BM25F score per fielded document, in corpus order.
         """
-        return self._core.get_scores(self._encode_query(query))
+        return _as_score_array(self._core.get_scores(self._encode_query(query)))
 
-    def get_top_n(self, query: str, n: int = 5) -> List[Tuple[float, int]]:
+    def get_top_n(self, query: str, n: int = 5) -> np.ndarray:
         """Return the highest-scoring fielded document ids for ``query``.
 
         Parameters
@@ -1311,10 +1350,11 @@ class BM25F(_TokenizerSupportMixin, AsyncBatchMixin):
 
         Returns
         -------
-        list[tuple[float, int]]
-            ``(score, doc_id)`` pairs sorted from highest to lowest score.
+        np.ndarray
+            Structured record array with ``score`` (float32) and ``doc_id``
+            (uint32) fields, sorted from highest to lowest score.
         """
-        return self._core.get_top_n(self._encode_query(query), n)
+        return _as_top_n_array(self._core.get_top_n(self._encode_query(query), n))
 
     def __repr__(self) -> str:
         return f"BM25F(corpus_size={self.corpus_size}, k1={self.k1})"

@@ -18,8 +18,9 @@ At runtime the C++ core selects the fastest available backend:
 * ``scalar`` everywhere else.
 
 The SIMD kernels vectorize the BM25 term-frequency normalization for Okapi
-BM25, BM25+, BM25L, and BM25Adpt. Scores are still accumulated into the normal
-document-order output vector, so Python API behavior is unchanged.
+BM25, BM25+, BM25L, and BM25Adpt. Scores are accumulated in document order and
+exposed to Python as float32 NumPy arrays; top-n results are exposed as
+structured ``(score, doc_id)`` NumPy records.
 
 Hotspot Work
 ------------

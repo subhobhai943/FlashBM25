@@ -21,8 +21,8 @@ query times, especially on large corpora.
 ## Features
 
 - **SIMD scoring** - runtime dispatch to AVX2, SSE4.2, NEON, or scalar kernels  
+- **NumPy-native results** - float32 score arrays and structured top-n records  
 - 🚀 **C++ core** — compiled extension via pybind11, no Python loops in the hot path  
-- 📦 **Zero runtime dependencies** — pure C++17 standard library  
 - 🔧 **Tunable** — `k1`, `b`, `epsilon` exposed as constructor arguments  
 - 🧵 **OpenMP-ready** — automatically uses multi-core parallelism when OpenMP is available  
 - 🐍 **Pythonic API** — thin wrapper with full type hints  
@@ -32,6 +32,9 @@ query times, especially on large corpora.
 ```bash
 pip install flashbm25
 ```
+
+Install `flashbm25[sparse]` when you want batch results as SciPy CSR matrices.
+NumPy is installed automatically for the public score array API.
 
 Pre-built wheels are provided for **Linux, macOS, and Windows** on Python 3.9–3.12.
 
@@ -60,11 +63,12 @@ bm25 = BM25(corpus)
 
 # Score every document against a query
 scores = bm25.get_scores("fox jumps")
-print(scores)  # [1.43, 0.72, 0.0, 0.0, 0.0]
+print(scores)  # [1.43 0.72 0.   0.   0.  ]
+print(scores.dtype)  # float32
 
-# Get the top-3 (score, doc_index) pairs
+# Get the top-3 structured (score, doc_id) records
 print(bm25.get_top_n("fox jumps", n=3))
-# [(1.43, 0), (0.72, 1), (0.0, 2)]
+# array([(1.43, 0), (0.72, 1), (0.0, 2)], dtype=[('score', '<f4'), ('doc_id', '<u4')])
 
 # Get the actual top-3 documents
 print(bm25.get_top_n_docs("fox jumps", n=3))
@@ -92,8 +96,9 @@ the public Python docstrings.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `get_scores(query)` | `list[float]` | BM25 score for every doc |
-| `get_top_n(query, n=5)` | `list[tuple[float, int]]` | Top-n `(score, index)` pairs |
+| `get_scores(query)` | `np.ndarray` (`float32`) | BM25 score for every doc |
+| `get_scores_batch(queries, sparse=None)` | `np.ndarray` or `scipy.sparse.csr_matrix` | Dense or sparse batch score matrix |
+| `get_top_n(query, n=5)` | structured `np.ndarray` | Top-n `(score: float32, doc_id: uint32)` records |
 | `get_top_n_docs(query, n=5)` | `list[str]` | Top-n document strings |
 
 ### Properties

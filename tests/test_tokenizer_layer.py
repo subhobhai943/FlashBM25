@@ -2,6 +2,7 @@
 Tokenizer-layer tests for FlashBM25.
 """
 
+import numpy as np
 import pytest
 
 try:
@@ -101,7 +102,7 @@ def test_bm25_persistence_with_builtin_tokenizer(tmp_path):
     bm25.save(path)
     loaded = BM25.load(path)
 
-    assert loaded.get_scores("cafÃ©") == pytest.approx(expected_scores)
+    np.testing.assert_allclose(loaded.get_scores("cafÃ©"), expected_scores)
 
 
 @skip_no_ext

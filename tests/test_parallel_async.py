@@ -1,8 +1,8 @@
 """
-Tests for ROADMAP §2.2 — Parallel & Async Query.
+Tests for ROADMAP sections 2.2 and 2.4: parallel, async, and sparse query APIs.
 
 Covers:
-  - get_scores_batch  (sequential and threaded)
+  - get_scores_batch  (sequential, threaded, dense, and sparse)
   - get_top_n_batch
   - aget_scores
   - aget_top_n
@@ -66,7 +66,7 @@ class TestGetScoresBatch:
     def test_sequential_matches_individual(self, bm25: BM25) -> None:
         batch = bm25.get_scores_batch(QUERIES, n_jobs=1)
         for i, q in enumerate(QUERIES):
-            expected = np.array(bm25.get_scores(q), dtype=np.float32)
+            expected = np.asarray(bm25.get_scores(q), dtype=np.float32)
             np.testing.assert_allclose(batch[i], expected, rtol=1e-5)
 
     def test_threaded_matches_sequential(self, bm25: BM25) -> None:
@@ -82,6 +82,23 @@ class TestGetScoresBatch:
         result = bm25.get_scores_batch(["quick fox"])
         assert result.shape == (1, len(CORPUS))
 
+    def test_sparse_true_returns_csr(self, bm25: BM25) -> None:
+        scipy_sparse = pytest.importorskip("scipy.sparse")
+
+        result = bm25.get_scores_batch(QUERIES, sparse=True)
+
+        assert scipy_sparse.isspmatrix_csr(result)
+        assert result.dtype == np.float32
+        assert result.shape == (len(QUERIES), len(CORPUS))
+
+    def test_sparse_threshold_auto_returns_csr(self, bm25: BM25) -> None:
+        scipy_sparse = pytest.importorskip("scipy.sparse")
+
+        result = bm25.get_scores_batch(QUERIES, sparse_threshold=1)
+
+        assert scipy_sparse.isspmatrix_csr(result)
+        assert result.shape == (len(QUERIES), len(CORPUS))
+
     def test_raises_on_string_input(self, bm25: BM25) -> None:
         with pytest.raises(TypeError, match="sequence"):
             bm25.get_scores_batch("quick fox")  # type: ignore[arg-type]
@@ -93,6 +110,10 @@ class TestGetScoresBatch:
     def test_raises_on_invalid_n_jobs(self, bm25: BM25) -> None:
         with pytest.raises(ValueError, match="n_jobs"):
             bm25.get_scores_batch(QUERIES, n_jobs=-2)
+
+    def test_raises_on_invalid_sparse_threshold(self, bm25: BM25) -> None:
+        with pytest.raises(ValueError, match="sparse_threshold"):
+            bm25.get_scores_batch(QUERIES, sparse_threshold=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -106,12 +127,15 @@ class TestGetTopNBatch:
         assert isinstance(results, list)
         assert len(results) == len(QUERIES)
         for ranked in results:
+            assert isinstance(ranked, np.ndarray)
+            assert ranked.dtype.names == ("score", "doc_id")
             assert len(ranked) <= 3
 
     def test_threaded_matches_sequential(self, bm25: BM25) -> None:
         seq = bm25.get_top_n_batch(QUERIES, n=3, n_jobs=1)
         threaded = bm25.get_top_n_batch(QUERIES, n=3, n_jobs=2)
-        assert seq == threaded
+        for left, right in zip(seq, threaded):
+            np.testing.assert_array_equal(left, right)
 
     def test_raises_on_string(self, bm25: BM25) -> None:
         with pytest.raises(TypeError):
@@ -139,12 +163,13 @@ class TestAsyncInterface:
             return await bm25.aget_scores("quick fox")
 
         async_result = asyncio.run(_run())
-        sync_result = np.array(bm25.get_scores("quick fox"), dtype=np.float32)
+        sync_result = np.asarray(bm25.get_scores("quick fox"), dtype=np.float32)
         np.testing.assert_allclose(async_result, sync_result, rtol=1e-5)
 
-    def test_aget_top_n_returns_list(self, bm25: BM25) -> None:
+    def test_aget_top_n_returns_record_array(self, bm25: BM25) -> None:
         result = asyncio.run(bm25.aget_top_n("quick fox", n=3))
-        assert isinstance(result, list)
+        assert isinstance(result, np.ndarray)
+        assert result.dtype.names == ("score", "doc_id")
         assert len(result) <= 3
 
     def test_aget_scores_batch_shape(self, bm25: BM25) -> None:

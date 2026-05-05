@@ -68,5 +68,5 @@ def test_variants_top_n_docs_align_with_top_n_indices(variant_cls):
     top_pairs = model.get_top_n("saturn rings", n=3)
     top_docs = model.get_top_n_docs("saturn rings", n=3)
 
-    resolved_docs = [CORPUS[index] for _, index in top_pairs]
+    resolved_docs = [CORPUS[int(index)] for index in top_pairs["doc_id"]]
     assert top_docs == resolved_docs
